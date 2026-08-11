@@ -33,7 +33,7 @@ export default function Header({ role }: { role: Role }) {
 
         <nav className="flex items-center gap-1 flex-wrap">
           <Link href="/seller" className={linkClass('/seller')}>
-            🛒 Vente
+            🛒 Produit vendu
           </Link>
           <Link href="/dashboard" className={linkClass('/dashboard')}>
             📈 Tableau de bord
