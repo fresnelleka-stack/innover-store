@@ -245,26 +245,29 @@ export default function AdminPanel() {
               />
               <input
                 type="number"
+                min="0"
                 placeholder="Prix d'achat (XAF)"
                 required
-                value={formData.cost_xaf}
-                onChange={(e) => setFormData({ ...formData, cost_xaf: parseFloat(e.target.value) })}
+                value={formData.cost_xaf === 0 ? '' : formData.cost_xaf}
+                onChange={(e) => setFormData({ ...formData, cost_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
               <input
                 type="number"
+                min="0"
                 placeholder="Prix de vente (XAF)"
                 required
-                value={formData.selling_price_xaf}
-                onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) })}
+                value={formData.selling_price_xaf === 0 ? '' : formData.selling_price_xaf}
+                onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
               <input
                 type="number"
-                placeholder="Quantité"
+                min="1"
+                placeholder="Quantité (ex: 5)"
                 required
-                value={formData.quantity_available}
-                onChange={(e) => setFormData({ ...formData, quantity_available: parseInt(e.target.value) })}
+                value={formData.quantity_available === 0 ? '' : formData.quantity_available}
+                onChange={(e) => setFormData({ ...formData, quantity_available: parseInt(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
               <div className="flex gap-3">
