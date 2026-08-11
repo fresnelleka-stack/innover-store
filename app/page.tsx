@@ -120,38 +120,50 @@ export default function Storefront() {
             {search ? 'Aucun produit trouvé.' : 'Aucun produit pour le moment.'}
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filtered.map((p) => {
               const v = catVisual(p.category);
               return (
-                <div
-                  key={p.id}
-                  className="bg-white rounded-xl shadow hover:shadow-xl transition overflow-hidden flex flex-col"
-                >
-                  {p.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.image_url} alt={p.name} className="h-40 w-full object-cover" />
-                  ) : (
-                    <div className={'h-40 bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-6xl'}>
-                      {v.emoji}
-                    </div>
-                  )}
-                  <div className="p-3 flex flex-col flex-1">
-                    <h3 className="font-semibold text-gray-900 text-sm leading-snug">{p.name}</h3>
-                    {p.description && (
-                      <p className="mt-1 text-xs text-gray-500 leading-snug">{p.description}</p>
+                <div key={p.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition flex gap-3 p-3">
+                  {/* Photo à gauche */}
+                  <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden">
+                    {p.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className={'w-full h-full bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-4xl'}>
+                        {v.emoji}
+                      </div>
                     )}
-                    <div className="mt-2 text-red-600 font-extrabold text-lg">
-                      {p.price_fcfa > 0 ? fmt(p.price_fcfa) + ' FCFA' : 'Nous consulter'}
+                  </div>
+
+                  {/* Infos à droite */}
+                  <div className="flex-1 min-w-0 flex flex-col">
+                    <div className="flex items-start gap-1.5">
+                      <span className="mt-0.5 shrink-0 bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                        DISPO
+                      </span>
+                      <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">{p.name}</h3>
                     </div>
-                    <a
-                      href={WHATSAPP}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 block text-center bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition"
-                    >
-                      🛒 Acheter
-                    </a>
+                    {p.description && (
+                      <p className="text-xs text-gray-500 leading-snug line-clamp-1 mt-0.5">{p.description}</p>
+                    )}
+                    <div className="mt-auto pt-2 flex items-end justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-red-500 font-semibold leading-none">Prix</div>
+                        <div className="text-red-600 font-extrabold text-lg leading-tight truncate">
+                          {p.price_fcfa > 0 ? fmt(p.price_fcfa) + ' FCFA' : 'Nous consulter'}
+                        </div>
+                      </div>
+                      <a
+                        href={WHATSAPP}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2 rounded-lg transition"
+                      >
+                        Acheter
+                      </a>
+                    </div>
                   </div>
                 </div>
               );
