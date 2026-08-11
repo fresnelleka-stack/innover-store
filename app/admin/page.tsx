@@ -194,7 +194,17 @@ export default function AdminPanel() {
       alert('Stock épuisé pour ' + p.name);
       return;
     }
-    if (!confirm('Confirmer la vente de ' + p.name + ' ?')) return;
+    // Le vendeur saisit le prix de vente réel (pré-rempli avec le prix conseillé).
+    const priceStr = prompt(
+      'Prix de vente de « ' + p.name +' » (XAF) ?',
+      String(p.selling_price_xaf)
+    );
+    if (priceStr === null) return;
+    const price = parseFloat(priceStr);
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Entrez un prix de vente valide.');
+      return;
+    }
     try {
       setError('');
       setSellingId(p.id);
@@ -203,9 +213,9 @@ export default function AdminPanel() {
         product_id: p.id,
         imei: p.imei,
         quantity: 1,
-        unit_price_xaf: p.selling_price_xaf,
-        total_price_xaf: p.selling_price_xaf,
-        profit_xaf: p.selling_price_xaf - p.cost_xaf,
+        unit_price_xaf: price,
+        total_price_xaf: price,
+        profit_xaf: price - p.cost_xaf,
         seller_id: null,
         seller_name: 'Vendeur',
       }]);
