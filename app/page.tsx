@@ -8,13 +8,6 @@ import { getRole } from '@/lib/auth';
 // Groupe WhatsApp de la boutique (bouton "Acheter").
 const WHATSAPP = 'https://chat.whatsapp.com/K2UIxb5Cg0QJQuG6QoEx4y?s=hd&p=i&mlu=4&amv=1';
 
-// La description est encodée dans `sku` : "<code>|~|<description>".
-const parseDesc = (sku: string | null | undefined): string => {
-  const s = sku || '';
-  const i = s.indexOf('|~|');
-  return i >= 0 ? s.slice(i + 3) : '';
-};
-
 const catVisual = (cat: string) => {
   if (cat === 'phone') return { emoji: '📱', grad: 'from-red-500 to-red-700' };
   if (cat === 'accessory') return { emoji: '🎧', grad: 'from-rose-500 to-rose-700' };
@@ -22,7 +15,7 @@ const catVisual = (cat: string) => {
 };
 
 export default function Storefront() {
-  const [products, setProducts] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isStaff, setIsStaff] = useState(false);
@@ -35,18 +28,17 @@ export default function Storefront() {
   const load = async () => {
     try {
       const { data } = await supabase
-        .from('products')
-        .select('id, name, category, selling_price_xaf, quantity_available, sku, image_url')
-        .gt('quantity_available', 0)
+        .from('catalog')
+        .select('id, name, description, category, price_fcfa, image_url')
         .order('created_at', { ascending: false });
-      setProducts(data || []);
+      setItems(data || []);
     } finally {
       setLoading(false);
     }
   };
 
   const fmt = (n: number) => Number(n).toLocaleString('fr-CM');
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = items.filter((p) => (p.name || '').toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -61,7 +53,7 @@ export default function Storefront() {
             </span>
           </div>
           <Link
-            href={isStaff ? '/admin' : '/login'}
+            href={isStaff ? '/vitrine' : '/login'}
             className="text-sm font-semibold text-gray-500 hover:text-gray-800"
           >
             {isStaff ? '🔧 Espace gestion' : 'Connexion'}
@@ -97,10 +89,10 @@ export default function Storefront() {
         </div>
 
         {loading ? (
-          <p className="text-center text-gray-500 py-16">Chargement des produits...</p>
+          <p className="text-center text-gray-500 py-16">Chargement...</p>
         ) : filtered.length === 0 ? (
           <p className="text-center text-gray-500 py-16">
-            {search ? 'Aucun produit trouvé.' : 'Aucun produit disponible pour le moment.'}
+            {search ? 'Aucun produit trouvé.' : 'Aucun produit pour le moment.'}
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -121,12 +113,11 @@ export default function Storefront() {
                   )}
                   <div className="p-3 flex flex-col flex-1">
                     <h3 className="font-semibold text-gray-900 text-sm leading-snug">{p.name}</h3>
-                    {parseDesc(p.sku) && (
-                      <p className="mt-1 text-xs text-gray-500 leading-snug">{parseDesc(p.sku)}</p>
+                    {p.description && (
+                      <p className="mt-1 text-xs text-gray-500 leading-snug">{p.description}</p>
                     )}
-                    <div className="mt-1 text-xs text-green-600 font-semibold">✓ Disponible</div>
                     <div className="mt-2 text-red-600 font-extrabold text-lg">
-                      {p.selling_price_xaf > 0 ? fmt(p.selling_price_xaf) + ' FCFA' : 'Nous consulter'}
+                      {p.price_fcfa > 0 ? fmt(p.price_fcfa) + ' FCFA' : 'Nous consulter'}
                     </div>
                     <a
                       href={WHATSAPP}

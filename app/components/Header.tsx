@@ -41,6 +41,9 @@ export default function Header({ role }: { role: Role }) {
           <Link href="/admin" className={linkClass('/admin')}>
             📊 Produits
           </Link>
+          <Link href="/vitrine" className={linkClass('/vitrine')}>
+            📣 Vitrine
+          </Link>
           <span className="ml-2 px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-semibold">
             {role === 'admin' ? '👑 Admin' : '🧑‍💼 Vendeur'}
           </span>
