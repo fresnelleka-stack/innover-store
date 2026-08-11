@@ -16,6 +16,7 @@ type ProductForm = {
   selling_price_xaf: number;
   quantity_available: number;
   description: string;
+  image_url: string;
 };
 
 const emptyFormData: ProductForm = {
@@ -27,7 +28,41 @@ const emptyFormData: ProductForm = {
   selling_price_xaf: 0,
   quantity_available: 0,
   description: '',
+  image_url: '',
 };
+
+// Compresse/redimensionne une photo (max 700px, JPEG ~72%) → data URL léger pour la base.
+const compressImage = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Lecture image impossible'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image invalide'));
+      img.onload = () => {
+        const max = 700;
+        let { width, height } = img;
+        if (width > max || height > max) {
+          if (width >= height) {
+            height = Math.round((height * max) / width);
+            width = max;
+          } else {
+            width = Math.round((width * max) / height);
+            height = max;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas indisponible'));
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 
 // La description est stockée dans la colonne `sku` (unique) sous la forme
 // "<code-unique>|~|<description>". On garde ainsi l'unicité sans changer la base.
@@ -213,6 +248,7 @@ export default function AdminPanel() {
       selling_price_xaf: p.selling_price_xaf,
       quantity_available: p.quantity_available,
       description: parseDesc(p.sku),
+      image_url: p.image_url || '',
     });
     setShowForm(true);
   };
@@ -590,6 +626,45 @@ export default function AdminPanel() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
+                  📷 Photo du produit (affichée sur la vitrine)
+                </label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        const d = await compressImage(f);
+                        setFormData((prev) => ({ ...prev, image_url: d }));
+                      } catch {
+                        alert('Photo invalide, réessaie avec une autre image.');
+                      }
+                    }}
+                    className="text-sm text-gray-700"
+                  />
+                  {formData.image_url && (
+                    <div className="flex items-center gap-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={formData.image_url}
+                        alt="aperçu"
+                        className="h-16 w-16 object-cover rounded border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, image_url: '' }))}
+                        className="text-red-600 text-sm font-semibold"
+                      >
+                        Retirer
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-600 mb-1">
                   IMEI — <span className="font-semibold">un par ligne</span> (un par appareil). Le stock = nombre d&apos;IMEI. Laisser vide pour un accessoire.
                 </label>
                 <textarea
@@ -700,12 +775,24 @@ export default function AdminPanel() {
                       className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>
-                        {p.name}
-                        {parseDesc(p.sku) && (
-                          <span className="block text-xs font-normal text-gray-500 mt-0.5 max-w-[220px]">
-                            {parseDesc(p.sku)}
-                          </span>
-                        )}
+                        <div className="flex items-start gap-2">
+                          {p.image_url && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={p.image_url}
+                              alt={p.name}
+                              className="h-10 w-10 object-cover rounded border shrink-0"
+                            />
+                          )}
+                          <div>
+                            {p.name}
+                            {parseDesc(p.sku) && (
+                              <span className="block text-xs font-normal text-gray-500 mt-0.5 max-w-[200px]">
+                                {parseDesc(p.sku)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-3 text-sm text-gray-900 align-top">
                         {(() => {

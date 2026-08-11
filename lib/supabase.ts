@@ -16,6 +16,7 @@ export type Product = {
   selling_price_xaf: number;
   quantity_available: number;
   quantity_sold: number;
+  image_url?: string | null;
   created_at: string;
   updated_at: string;
 };

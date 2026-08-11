@@ -36,7 +36,7 @@ export default function Storefront() {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, name, category, selling_price_xaf, quantity_available, sku')
+        .select('id, name, category, selling_price_xaf, quantity_available, sku, image_url')
         .gt('quantity_available', 0)
         .order('created_at', { ascending: false });
       setProducts(data || []);
@@ -111,11 +111,16 @@ export default function Storefront() {
                   key={p.id}
                   className="bg-white rounded-xl shadow hover:shadow-xl transition overflow-hidden flex flex-col"
                 >
-                  <div
-                    className={'h-36 bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-6xl'}
-                  >
-                    {v.emoji}
-                  </div>
+                  {p.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image_url} alt={p.name} className="h-40 w-full object-cover" />
+                  ) : (
+                    <div
+                      className={'h-40 bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-6xl'}
+                    >
+                      {v.emoji}
+                    </div>
+                  )}
                   <div className="p-3 flex flex-col flex-1">
                     <h3 className="font-semibold text-gray-900 text-sm leading-snug">{p.name}</h3>
                     {parseDesc(p.sku) && (
