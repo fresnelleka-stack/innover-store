@@ -12,9 +12,11 @@ export default function SellerPage() {
   const [loading, setLoading] = useState(true);
   const [savingCheckout, setSavingCheckout] = useState(false);
   const [error, setError] = useState('');
+  const [recentSales, setRecentSales] = useState<any[]>([]);
 
   useEffect(() => {
     loadProducts();
+    loadRecentSales();
   }, []);
 
   const loadProducts = async () => {
@@ -32,6 +34,20 @@ export default function SellerPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadRecentSales = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sales')
+        .select('*, products(name)')
+        .order('sold_at', { ascending: false })
+        .limit(15);
+      if (error) throw error;
+      setRecentSales(data || []);
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -102,6 +118,7 @@ export default function SellerPage() {
       alert('Vente enregistree! ' + cart.length + ' article(s) vendus. Total: ' + totalSale.toLocaleString('fr-CM') + ' XAF. Profit: ' + totalProfit.toLocaleString('fr-CM') + ' XAF');
       setCart([]);
       loadProducts();
+      loadRecentSales();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -255,7 +272,41 @@ export default function SellerPage() {
             </div>
           </div>
         </div>
+
+        {/* Ventes récentes */}
+        <div className="bg-white rounded-lg shadow p-6 mt-6">
+          <h2 className="text-xl font-bold mb-4 text-gray-900">🧾 Ventes récentes</h2>
+          {recentSales.length === 0 ? (
+            <p className="text-gray-500 text-center py-6">Aucune vente pour le moment</p>
+          ) : (
+            <div className="divide-y">
+              {recentSales.map((sale) => {
+                const d = new Date(sale.sold_at);
+                const when =
+                  d.toLocaleTimeString('fr-CM', { hour: '2-digit', minute: '2-digit' }) +
+                  ' - ' +
+                  d.toLocaleDateString('fr-CM', { day: '2-digit', month: '2-digit' });
+                return (
+                  <div key={sale.id} className="flex justify-between items-center py-3">
+                    <div>
+                      <p className="font-semibold text-sm text-gray-900">
+                        {sale.products?.name || 'Produit supprimé'}
+                        {sale.quantity > 1 ? ' x' + sale.quantity : ''}
+                      </p>
+                      {sale.imei && <p className="text-xs text-gray-600">IMEI: {sale.imei}</p>}
+                      <p className="text-xs text-gray-500">{when}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-blue-600">{Number(sale.total_price_xaf).toLocaleString('fr-CM')} XAF</p>
+                      <p className="text-xs text-green-600">+{Number(sale.profit_xaf).toLocaleString('fr-CM')} profit</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
-                                           }
+}
