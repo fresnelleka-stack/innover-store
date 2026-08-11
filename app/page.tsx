@@ -15,6 +15,21 @@ const catVisual = (cat: string) => {
   return { emoji: '📦', grad: 'from-slate-500 to-slate-700' };
 };
 
+// image_url peut contenir 1 photo (ancien format) ou un tableau JSON de photos.
+const getImages = (image_url: string | null | undefined): string[] => {
+  if (!image_url) return [];
+  const s = String(image_url);
+  if (s.startsWith('[')) {
+    try {
+      const a = JSON.parse(s);
+      return Array.isArray(a) ? a.filter(Boolean) : [];
+    } catch {
+      return [s];
+    }
+  }
+  return [s];
+};
+
 export default function Storefront() {
   const router = useRouter();
   const [items, setItems] = useState<any[]>([]);
@@ -124,21 +139,21 @@ export default function Storefront() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filtered.map((p) => {
               const v = catVisual(p.category);
+              const imgs = getImages(p.image_url);
               return (
-                <div key={p.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition flex gap-3 p-3">
-                  {/* Photo à gauche (cliquable pour agrandir) */}
-                  <button
-                    type="button"
-                    onClick={() => p.image_url && setZoom(p)}
-                    className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden relative group"
-                    title={p.image_url ? 'Cliquer pour agrandir la photo' : undefined}
-                  >
-                    {p.image_url ? (
+                <div
+                  key={p.id}
+                  onClick={() => setZoom(p)}
+                  className="bg-white rounded-xl shadow-sm hover:shadow-md transition flex gap-3 p-3 cursor-pointer"
+                >
+                  {/* Photo à gauche */}
+                  <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden relative">
+                    {imgs.length > 0 ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                        <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
                         <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
-                          🔍
+                          {imgs.length > 1 ? '📷 ' + imgs.length : '🔍'}
                         </span>
                       </>
                     ) : (
@@ -146,7 +161,7 @@ export default function Storefront() {
                         {v.emoji}
                       </div>
                     )}
-                  </button>
+                  </div>
 
                   {/* Infos à droite */}
                   <div className="flex-1 min-w-0 flex flex-col">
@@ -170,6 +185,7 @@ export default function Storefront() {
                         href={WHATSAPP}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2 rounded-lg transition"
                       >
                         Acheter
@@ -183,45 +199,75 @@ export default function Storefront() {
         )}
       </main>
 
-      {/* Photo agrandie (clients) */}
+      {/* Galerie produit (clients) : plusieurs photos, on fait glisser */}
       {zoom && (
         <div
-          className="fixed inset-0 bg-black/85 z-50 flex flex-col items-center justify-center p-4"
+          className="fixed inset-0 bg-black/90 z-50 flex flex-col p-3"
           onClick={() => setZoom(null)}
         >
           <button
             onClick={() => setZoom(null)}
-            className="absolute top-4 right-4 text-white text-3xl leading-none"
+            className="self-end text-white text-3xl leading-none mb-2"
             aria-label="Fermer"
           >
             ✕
           </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={zoom.image_url}
-            alt={zoom.name}
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
-          />
-          <div
-            className="mt-4 w-full max-w-md bg-white rounded-xl p-4 flex items-center justify-between gap-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="min-w-0">
-              <p className="font-semibold text-gray-900 text-sm leading-snug">{zoom.name}</p>
-              <p className="text-red-600 font-extrabold text-lg">
-                {zoom.price_fcfa > 0 ? fmt(zoom.price_fcfa) + ' FCFA' : 'Nous consulter'}
-              </p>
-            </div>
-            <a
-              href={WHATSAPP}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2 rounded-lg"
-            >
-              Acheter
-            </a>
-          </div>
+
+          {(() => {
+            const imgs = getImages(zoom.image_url);
+            return (
+              <>
+                <div className="flex-1 min-h-0" onClick={(e) => e.stopPropagation()}>
+                  {imgs.length > 0 ? (
+                    <div className="h-full flex gap-2 overflow-x-auto snap-x snap-mandatory">
+                      {imgs.map((src, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={i}
+                          src={src}
+                          alt={zoom.name + ' ' + (i + 1)}
+                          className="snap-center shrink-0 w-full h-full object-contain rounded-lg"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-white text-7xl">
+                      {catVisual(zoom.category).emoji}
+                    </div>
+                  )}
+                </div>
+
+                {imgs.length > 1 && (
+                  <p className="text-center text-white/70 text-xs mt-2">
+                    ← Fais glisser pour voir les {imgs.length} photos →
+                  </p>
+                )}
+
+                <div
+                  className="mt-3 bg-white rounded-xl p-4 flex items-center justify-between gap-3"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 leading-snug">{zoom.name}</p>
+                    {zoom.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">{zoom.description}</p>
+                    )}
+                    <p className="text-red-600 font-extrabold text-xl mt-1">
+                      {zoom.price_fcfa > 0 ? fmt(zoom.price_fcfa) + ' FCFA' : 'Nous consulter'}
+                    </p>
+                  </div>
+                  <a
+                    href={WHATSAPP}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg"
+                  >
+                    Acheter
+                  </a>
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 

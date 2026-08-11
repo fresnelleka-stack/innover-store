@@ -45,15 +45,30 @@ const compressImage = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+// image_url = 1 photo (ancien) ou tableau JSON de photos.
+const getImages = (image_url: string | null | undefined): string[] => {
+  if (!image_url) return [];
+  const s = String(image_url);
+  if (s.startsWith('[')) {
+    try {
+      const a = JSON.parse(s);
+      return Array.isArray(a) ? a.filter(Boolean) : [];
+    } catch {
+      return [s];
+    }
+  }
+  return [s];
+};
+
 type CatForm = {
   id: string | null;
   name: string;
   category: 'phone' | 'accessory' | 'other';
   description: string;
   price: string;
-  image_url: string;
+  images: string[];
 };
-const emptyForm: CatForm = { id: null, name: '', category: 'phone', description: '', price: '', image_url: '' };
+const emptyForm: CatForm = { id: null, name: '', category: 'phone', description: '', price: '', images: [] };
 
 export default function VitrineAdmin() {
   const router = useRouter();
@@ -107,7 +122,7 @@ export default function VitrineAdmin() {
       category: p.category || 'phone',
       description: p.description || '',
       price: p.price_fcfa ? String(p.price_fcfa) : '',
-      image_url: p.image_url || '',
+      images: getImages(p.image_url),
     });
   };
 
@@ -125,7 +140,7 @@ export default function VitrineAdmin() {
         category: form.category,
         description: form.description.trim() || null,
         price_fcfa: parseFloat(form.price) || 0,
-        image_url: form.image_url || null,
+        image_url: form.images.length ? JSON.stringify(form.images) : null,
       };
       if (form.id) {
         const { error } = await supabase.from('catalog').update(payload).eq('id', form.id);
@@ -210,9 +225,16 @@ export default function VitrineAdmin() {
                       </button>
                     )}
                   </div>
-                  {p.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.image_url} alt={p.name} className="h-36 w-full object-cover" />
+                  {getImages(p.image_url).length > 0 ? (
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={getImages(p.image_url)[0]} alt={p.name} className="h-36 w-full object-cover" />
+                      {getImages(p.image_url).length > 1 && (
+                        <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                          📷 {getImages(p.image_url).length}
+                        </span>
+                      )}
+                    </div>
                   ) : (
                     <div className={'h-36 bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-5xl'}>
                       {v.emoji}
@@ -249,37 +271,49 @@ export default function VitrineAdmin() {
                 <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded p-2">{error}</div>
               )}
               <div>
-                <label className="block text-sm text-gray-600 mb-1">📷 Photo</label>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
+                <label className="block text-sm text-gray-600 mb-1">
+                  📷 Photos du produit (tu peux en mettre plusieurs)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={async (e) => {
+                    const files = Array.from(e.target.files || []);
+                    for (const f of files) {
                       try {
                         const d = await compressImage(f);
-                        setForm((prev) => (prev ? { ...prev, image_url: d } : prev));
+                        setForm((prev) => (prev ? { ...prev, images: [...prev.images, d] } : prev));
                       } catch {
-                        alert('Photo invalide.');
+                        /* ignore une photo invalide */
                       }
-                    }}
-                    className="text-sm text-gray-700"
-                  />
-                  {form.image_url && (
-                    <div className="flex items-center gap-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={form.image_url} alt="aperçu" className="h-16 w-16 object-cover rounded border" />
-                      <button
-                        type="button"
-                        onClick={() => setForm((prev) => (prev ? { ...prev, image_url: '' } : prev))}
-                        className="text-red-600 text-sm font-semibold"
-                      >
-                        Retirer
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    }
+                    e.target.value = '';
+                  }}
+                  className="text-sm text-gray-700"
+                />
+                {form.images.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mt-2">
+                    {form.images.map((src, i) => (
+                      <div key={i} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={'photo ' + (i + 1)} className="h-16 w-16 object-cover rounded border" />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((prev) =>
+                              prev ? { ...prev, images: prev.images.filter((_, j) => j !== i) } : prev
+                            )
+                          }
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full w-5 h-5 text-xs leading-none flex items-center justify-center"
+                          title="Retirer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <input
                 type="text"
