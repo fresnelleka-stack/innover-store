@@ -38,6 +38,7 @@ export default function AdminPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sellingId, setSellingId] = useState<string | null>(null);
   const [soldIds, setSoldIds] = useState<string[]>([]);
+  const [soldProductIds, setSoldProductIds] = useState<string[]>([]);
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
@@ -81,6 +82,13 @@ export default function AdminPanel() {
 
       if (error) throw error;
       setProducts(data || []);
+
+      // Produits ayant déjà au moins une vente → non modifiables
+      const { data: soldRows } = await supabase.from('sales').select('product_id');
+      const ids = Array.from(
+        new Set((soldRows || []).map((r: any) => r.product_id).filter(Boolean))
+      ) as string[];
+      setSoldProductIds(ids);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -224,6 +232,9 @@ export default function AdminPanel() {
 
   const cellStyle = (id: string) =>
     soldIds.includes(id) ? { backgroundColor: '#bbf7d0' } : undefined;
+
+  // Un produit déjà vendu (au moins une vente) ne peut plus être modifié.
+  const isSold = (p: Product) => soldProductIds.includes(p.id) || soldIds.includes(p.id);
 
   const margin = (cost: number, selling: number) => {
     const profit = selling - cost;
@@ -397,12 +408,21 @@ export default function AdminPanel() {
                           >
                             {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : soldIds.includes(p.id) ? '✓ Vendu' : 'Vendre'}
                           </button>
-                          <button
-                            onClick={() => handleEditClick(p)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold"
-                          >
-                            Modifier
-                          </button>
+                          {isSold(p) ? (
+                            <span
+                              className="text-gray-400 font-semibold"
+                              title="Produit déjà vendu — non modifiable"
+                            >
+                              🔒 Vendu
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleEditClick(p)}
+                              className="text-blue-600 hover:text-blue-800 font-semibold"
+                            >
+                              Modifier
+                            </button>
+                          )}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleDeleteProduct(p.id)}
