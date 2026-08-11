@@ -29,7 +29,12 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">INNOVER STORE</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-icon.svg" alt="INNOVER STORE" className="h-20 w-20 mx-auto mb-3" />
+          <h1 className="text-3xl font-bold mb-2">
+            <span className="text-gray-900">INNOVER</span>{' '}
+            <span className="text-red-600">STORE</span>
+          </h1>
           <p className="text-gray-600">Connexion</p>
         </div>
 
