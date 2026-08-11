@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (getRole()) router.replace('/');
+    if (getRole()) router.replace('/admin');
   }, [router]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -22,7 +22,7 @@ export default function LoginPage() {
       setError("Code d'accès incorrect");
       return;
     }
-    router.replace('/');
+    router.replace('/admin');
   };
 
   return (

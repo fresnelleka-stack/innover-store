@@ -452,6 +452,32 @@ export default function AdminPanel() {
     }
   };
 
+  // Fixer / changer le prix public (catalogue) affiché aux clients sur la vitrine.
+  const handleSetPublicPrice = async (p: Product) => {
+    const input = prompt(
+      'Prix public (catalogue) pour « ' + p.name + ' » en FCFA ?\n(0 ou vide = « Nous consulter »)',
+      p.selling_price_xaf ? String(p.selling_price_xaf) : ''
+    );
+    if (input === null) return;
+    const price = input.trim() === '' ? 0 : parseFloat(input);
+    if (!Number.isFinite(price) || price < 0) {
+      alert('Prix invalide.');
+      return;
+    }
+    try {
+      setError('');
+      const { data, error } = await supabase
+        .from('products')
+        .update({ selling_price_xaf: price })
+        .eq('id', p.id)
+        .select();
+      if (error) throw error;
+      if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const cellStyle = (id: string) =>
     soldIds.includes(id) ? { backgroundColor: '#bbf7d0' } : undefined;
 
@@ -562,6 +588,15 @@ export default function AdminPanel() {
                 value={formData.cost_xaf === 0 ? '' : formData.cost_xaf}
                 onChange={(e) => setFormData({ ...formData, cost_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Prix public / catalogue (FCFA)"
+                value={formData.selling_price_xaf === 0 ? '' : formData.selling_price_xaf}
+                onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
+                className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
+                title="Prix affiché aux clients sur la vitrine publique (laisser vide = 'Nous consulter')"
               />
               {parseImeis(formData.imei).length > 0 ? (
                 <div className="border rounded px-3 py-2 text-sm bg-gray-50 flex items-center text-gray-700">
@@ -740,6 +775,15 @@ export default function AdminPanel() {
                               Modifier
                             </button>
                           ) : null}
+                          {role === 'admin' && (
+                            <button
+                              onClick={() => handleSetPublicPrice(p)}
+                              className="text-red-600 hover:text-red-800 font-semibold"
+                              title="Prix public affiché sur la vitrine (catalogue)"
+                            >
+                              💲 Prix
+                            </button>
+                          )}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleRestock(p)}
