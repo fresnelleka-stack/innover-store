@@ -33,7 +33,7 @@ export default function AdminPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sellingId, setSellingId] = useState<string | null>(null);
-  const [justSoldId, setJustSoldId] = useState<string | null>(null);
+  const [soldIds, setSoldIds] = useState<string[]>([]);
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
   useEffect(() => {
@@ -166,8 +166,7 @@ export default function AdminPanel() {
       if (updError) throw updError;
       if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
 
-      setJustSoldId(p.id);
-      setTimeout(() => setJustSoldId(null), 3000);
+      setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -319,7 +318,7 @@ export default function AdminPanel() {
                       key={p.id}
                       className={
                         'border-b transition-colors ' +
-                        (justSoldId === p.id ? 'bg-green-100' : 'hover:bg-gray-50')
+                        (soldIds.includes(p.id) ? 'bg-green-200' : 'hover:bg-gray-50')
                       }
                     >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900">{p.name}</td>
@@ -336,7 +335,7 @@ export default function AdminPanel() {
                             disabled={sellingId === p.id || p.quantity_available <= 0}
                             className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded disabled:bg-gray-300 disabled:text-gray-500"
                           >
-                            {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : justSoldId === p.id ? '✓ Vendu' : 'Vendre'}
+                            {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : soldIds.includes(p.id) ? '✓ Vendu' : 'Vendre'}
                           </button>
                           <button
                             onClick={() => handleEditClick(p)}
