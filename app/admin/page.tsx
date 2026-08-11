@@ -15,6 +15,7 @@ type ProductForm = {
   cost_xaf: number;
   selling_price_xaf: number;
   quantity_available: number;
+  description: string;
 };
 
 const emptyFormData: ProductForm = {
@@ -25,6 +26,16 @@ const emptyFormData: ProductForm = {
   cost_xaf: 0,
   selling_price_xaf: 0,
   quantity_available: 0,
+  description: '',
+};
+
+// La description est stockée dans la colonne `sku` (unique) sous la forme
+// "<code-unique>|~|<description>". On garde ainsi l'unicité sans changer la base.
+const DESC_SEP = '|~|';
+const parseDesc = (sku: string | null | undefined): string => {
+  const s = sku || '';
+  const i = s.indexOf(DESC_SEP);
+  return i >= 0 ? s.slice(i + DESC_SEP.length) : '';
 };
 
 export default function AdminPanel() {
@@ -151,7 +162,13 @@ export default function AdminPanel() {
         return;
       }
 
-      const base = { ...formData, imei, quantity_available };
+      // La description est encodée dans `sku` (code unique + description).
+      const code = generateSku(formData.category);
+      const cleanDesc = (formData.description || '').split(DESC_SEP).join('/').trim();
+      const sku = cleanDesc ? code + DESC_SEP + cleanDesc : code;
+      // On n'envoie PAS `description` à la base (colonne inexistante).
+      const base: Record<string, any> = { ...formData, imei, quantity_available, sku };
+      delete base.description;
 
       if (editingId) {
         const { data, error } = await supabase
@@ -163,10 +180,9 @@ export default function AdminPanel() {
         if (error) throw error;
         if (data) setProducts(products.map((p) => (p.id === editingId ? data[0] : p)));
       } else {
-        const payload = { ...base, sku: generateSku(formData.category) };
         const { data, error } = await supabase
           .from('products')
-          .insert([payload])
+          .insert([base])
           .select();
 
         if (error) throw error;
@@ -196,6 +212,7 @@ export default function AdminPanel() {
       cost_xaf: p.cost_xaf,
       selling_price_xaf: p.selling_price_xaf,
       quantity_available: p.quantity_available,
+      description: parseDesc(p.sku),
     });
     setShowForm(true);
   };
@@ -561,6 +578,18 @@ export default function AdminPanel() {
               </select>
               <div className="md:col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
+                  Infos / description du produit (affichée aux clients sur la vitrine)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Ex : iPhone 11 64 Go, très bon état, batterie 90%, garantie 1 mois…"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-600 mb-1">
                   IMEI — <span className="font-semibold">un par ligne</span> (un par appareil). Le stock = nombre d&apos;IMEI. Laisser vide pour un accessoire.
                 </label>
                 <textarea
@@ -670,7 +699,14 @@ export default function AdminPanel() {
                       key={p.id}
                       className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
-                      <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>{p.name}</td>
+                      <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>
+                        {p.name}
+                        {parseDesc(p.sku) && (
+                          <span className="block text-xs font-normal text-gray-500 mt-0.5 max-w-[220px]">
+                            {parseDesc(p.sku)}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-3 text-sm text-gray-900 align-top">
                         {(() => {
                           const list = parseImeis(p.imei);

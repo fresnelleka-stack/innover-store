@@ -8,6 +8,13 @@ import { getRole } from '@/lib/auth';
 // Groupe WhatsApp de la boutique (bouton "Acheter").
 const WHATSAPP = 'https://chat.whatsapp.com/K2UIxb5Cg0QJQuG6QoEx4y?s=hd&p=i&mlu=4&amv=1';
 
+// La description est encodée dans `sku` : "<code>|~|<description>".
+const parseDesc = (sku: string | null | undefined): string => {
+  const s = sku || '';
+  const i = s.indexOf('|~|');
+  return i >= 0 ? s.slice(i + 3) : '';
+};
+
 const catVisual = (cat: string) => {
   if (cat === 'phone') return { emoji: '📱', grad: 'from-red-500 to-red-700' };
   if (cat === 'accessory') return { emoji: '🎧', grad: 'from-rose-500 to-rose-700' };
@@ -29,7 +36,7 @@ export default function Storefront() {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, name, category, selling_price_xaf, quantity_available')
+        .select('id, name, category, selling_price_xaf, quantity_available, sku')
         .gt('quantity_available', 0)
         .order('created_at', { ascending: false });
       setProducts(data || []);
@@ -111,6 +118,9 @@ export default function Storefront() {
                   </div>
                   <div className="p-3 flex flex-col flex-1">
                     <h3 className="font-semibold text-gray-900 text-sm leading-snug">{p.name}</h3>
+                    {parseDesc(p.sku) && (
+                      <p className="mt-1 text-xs text-gray-500 leading-snug">{parseDesc(p.sku)}</p>
+                    )}
                     <div className="mt-1 text-xs text-green-600 font-semibold">✓ Disponible</div>
                     <div className="mt-2 text-red-600 font-extrabold text-lg">
                       {p.selling_price_xaf > 0 ? fmt(p.selling_price_xaf) + ' FCFA' : 'Nous consulter'}
