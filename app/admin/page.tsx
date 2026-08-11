@@ -174,6 +174,9 @@ export default function AdminPanel() {
     }
   };
 
+  const cellStyle = (id: string) =>
+    soldIds.includes(id) ? { backgroundColor: '#bbf7d0' } : undefined;
+
   const margin = (cost: number, selling: number) => {
     const profit = selling - cost;
     const percent = cost > 0 ? ((profit / cost) * 100).toFixed(1) : 0;
@@ -316,19 +319,16 @@ export default function AdminPanel() {
                   return (
                     <tr
                       key={p.id}
-                      className={
-                        'border-b transition-colors ' +
-                        (soldIds.includes(p.id) ? 'bg-green-200' : 'hover:bg-gray-50')
-                      }
+                      className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
-                      <td className="px-6 py-3 text-sm font-medium text-gray-900">{p.name}</td>
-                      <td className="px-6 py-3 text-sm text-gray-900">{p.imei || '-'}</td>
-                      <td className="px-6 py-3 text-sm text-right text-gray-900">{p.cost_xaf.toLocaleString('fr-CM')} XAF</td>
-                      <td className="px-6 py-3 text-sm text-right text-gray-900">{p.selling_price_xaf.toLocaleString('fr-CM')} XAF</td>
-                      <td className="px-6 py-3 text-sm text-right text-green-600 font-semibold">
+                      <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>{p.name}</td>
+                      <td className="px-6 py-3 text-sm text-gray-900" style={cellStyle(p.id)}>{p.imei || '-'}</td>
+                      <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.cost_xaf.toLocaleString('fr-CM')} XAF</td>
+                      <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.selling_price_xaf.toLocaleString('fr-CM')} XAF</td>
+                      <td className="px-6 py-3 text-sm text-right text-green-600 font-semibold" style={cellStyle(p.id)}>
                         +{profit.toLocaleString('fr-CM')} ({percent}%)
                       </td>
-                      <td className="px-6 py-3 text-sm text-right">
+                      <td className="px-6 py-3 text-sm text-right" style={cellStyle(p.id)}>
                         <div className="flex gap-2 justify-end items-center">
                           <button
                             onClick={() => handleSell(p)}
