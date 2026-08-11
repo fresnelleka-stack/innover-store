@@ -63,15 +63,12 @@ export default function AdminPanel() {
       router.replace('/login');
       return;
     }
-    if (r !== 'admin') {
-      router.replace('/');
-      return;
-    }
+    // Admin ET vendeur ont accès à la gestion des produits (le vendeur ne peut juste pas supprimer).
     setRole(r);
   }, [router]);
 
   useEffect(() => {
-    if (role === 'admin') loadProducts();
+    if (role) loadProducts();
   }, [role]);
 
   const loadProducts = async () => {

@@ -48,14 +48,12 @@ export default function Home() {
             📈 Tableau de Bord
           </Link>
 
-          {role === 'admin' && (
-            <Link
-              href="/admin"
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 px-4 rounded-lg text-center text-lg transition sm:col-span-2"
-            >
-              📊 Gérer les Produits (Admin)
-            </Link>
-          )}
+          <Link
+            href="/admin"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 px-4 rounded-lg text-center text-lg transition sm:col-span-2"
+          >
+            📊 Gérer les Produits
+          </Link>
         </div>
       </main>
     </div>

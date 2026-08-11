@@ -33,11 +33,9 @@ export default function Header({ role }: { role: Role }) {
           <Link href="/dashboard" className={linkClass('/dashboard')}>
             📈 Tableau de bord
           </Link>
-          {role === 'admin' && (
-            <Link href="/admin" className={linkClass('/admin')}>
-              📊 Produits
-            </Link>
-          )}
+          <Link href="/admin" className={linkClass('/admin')}>
+            📊 Produits
+          </Link>
           <span className="ml-2 px-2 py-1 rounded bg-gray-100 text-gray-700 text-xs font-semibold">
             {role === 'admin' ? '👑 Admin' : '🧑‍💼 Vendeur'}
           </span>
