@@ -230,6 +230,30 @@ export default function AdminPanel() {
     }
   };
 
+  // Réapprovisionner : ajoute des pièces au stock (ne touche pas au prix,
+  // donc reste possible même sur un produit déjà vendu / au prix figé).
+  const handleRestock = async (p: Product) => {
+    const input = prompt('Combien de pièces ajouter au stock de « ' + p.name + ' » ?', '1');
+    if (input === null) return;
+    const n = parseInt(input, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      alert('Entrez un nombre valide (supérieur à 0).');
+      return;
+    }
+    try {
+      setError('');
+      const { data, error } = await supabase
+        .from('products')
+        .update({ quantity_available: p.quantity_available + n })
+        .eq('id', p.id)
+        .select();
+      if (error) throw error;
+      if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const cellStyle = (id: string) =>
     soldIds.includes(id) ? { backgroundColor: '#bbf7d0' } : undefined;
 
@@ -368,19 +392,20 @@ export default function AdminPanel() {
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Prix Achat</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Prix Vente</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Marge</th>
+                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Stock</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     Chargement...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     Aucun produit. Cliquez sur "Ajouter Produit" pour commencer.
                   </td>
                 </tr>
@@ -399,6 +424,11 @@ export default function AdminPanel() {
                       <td className="px-6 py-3 text-sm text-right text-green-600 font-semibold" style={cellStyle(p.id)}>
                         +{profit.toLocaleString('fr-CM')} ({percent}%)
                       </td>
+                      <td className="px-6 py-3 text-sm text-right font-bold" style={cellStyle(p.id)}>
+                        <span className={p.quantity_available <= 0 ? 'text-red-600' : 'text-gray-900'}>
+                          {p.quantity_available}
+                        </span>
+                      </td>
                       <td className="px-6 py-3 text-sm text-right" style={cellStyle(p.id)}>
                         <div className="flex gap-2 justify-end items-center">
                           <button
@@ -411,9 +441,9 @@ export default function AdminPanel() {
                           {isSold(p) ? (
                             <span
                               className="text-gray-400 font-semibold"
-                              title="Produit déjà vendu — non modifiable"
+                              title="Prix figé : article déjà vendu, prix/nom non modifiables (le stock reste réapprovisionnable)"
                             >
-                              🔒 Vendu
+                              🔒 figé
                             </span>
                           ) : (
                             <button
@@ -423,6 +453,13 @@ export default function AdminPanel() {
                               Modifier
                             </button>
                           )}
+                          <button
+                            onClick={() => handleRestock(p)}
+                            className="text-emerald-600 hover:text-emerald-800 font-semibold"
+                            title="Ajouter des pièces au stock (réapprovisionner)"
+                          >
+                            ➕ Stock
+                          </button>
                           {role === 'admin' && (
                             <button
                               onClick={() => handleDeleteProduct(p.id)}
