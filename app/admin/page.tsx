@@ -34,7 +34,24 @@ export default function AdminPanel() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sellingId, setSellingId] = useState<string | null>(null);
   const [soldIds, setSoldIds] = useState<string[]>([]);
+  const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
+
+  // Détection auto: renvoie le nom du produit qui a déjà cet IMEI, sinon null
+  const findImeiOwner = async (imei: string): Promise<string | null> => {
+    const clean = imei.trim();
+    if (!clean) return null;
+    let q = supabase.from('products').select('id, name').eq('imei', clean);
+    if (editingId) q = q.neq('id', editingId);
+    const { data, error } = await q.limit(1);
+    if (error) return null;
+    return data && data.length > 0 ? data[0].name : null;
+  };
+
+  const checkImei = async (imei: string) => {
+    const owner = await findImeiOwner(imei);
+    setImeiWarning(owner ? 'Cet IMEI est déjà enregistré (produit : ' + owner + ')' : '');
+  };
 
   useEffect(() => {
     loadProducts();
@@ -69,6 +86,15 @@ export default function AdminPanel() {
       setError('');
       const imei = formData.imei.trim() === '' ? null : formData.imei.trim();
 
+      // Détection auto: refuser un IMEI déjà présent dans le système
+      if (imei) {
+        const owner = await findImeiOwner(imei);
+        if (owner) {
+          setError('Cet IMEI est déjà enregistré dans le système (produit : ' + owner + '). Impossible de l\'ajouter deux fois.');
+          return;
+        }
+      }
+
       if (editingId) {
         const { data, error } = await supabase
           .from('products')
@@ -92,8 +118,13 @@ export default function AdminPanel() {
       setFormData(emptyFormData);
       setEditingId(null);
       setShowForm(false);
+      setImeiWarning('');
     } catch (err: any) {
-      setError(err.message);
+      if (err?.code === '23505' || (err?.message && err.message.toLowerCase().includes('imei'))) {
+        setError('Cet IMEI est déjà enregistré dans le système. Impossible de l\'ajouter deux fois.');
+      } else {
+        setError(err.message);
+      }
     }
   };
 
@@ -239,13 +270,25 @@ export default function AdminPanel() {
                 <option value="accessory">Accessoire</option>
                 <option value="other">Autre</option>
               </select>
-              <input
-                type="text"
-                placeholder="IMEI (si applicable)"
-                value={formData.imei}
-                onChange={(e) => setFormData({ ...formData, imei: e.target.value })}
-                className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-              />
+              <div>
+                <input
+                  type="text"
+                  placeholder="IMEI (si applicable)"
+                  value={formData.imei}
+                  onChange={(e) => {
+                    setFormData({ ...formData, imei: e.target.value });
+                    if (imeiWarning) setImeiWarning('');
+                  }}
+                  onBlur={(e) => checkImei(e.target.value)}
+                  className={
+                    'w-full border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 ' +
+                    (imeiWarning ? 'border-red-500' : '')
+                  }
+                />
+                {imeiWarning && (
+                  <p className="text-red-600 text-sm mt-1">⚠️ {imeiWarning}</p>
+                )}
+              </div>
               <input
                 type="number"
                 min="0"
