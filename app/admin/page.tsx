@@ -227,10 +227,10 @@ export default function AdminPanel() {
       soldImei = imeiList[idx - 1];
     }
 
-    // Le vendeur saisit le prix de vente réel (pré-rempli avec le prix conseillé).
+    // Le vendeur saisit le prix auquel il a réellement vendu.
     const priceStr = prompt(
-      'Prix de vente de « ' + p.name + ' »' + (soldImei ? ' (IMEI ' + soldImei + ')' : '') + ' (XAF) ?',
-      String(p.selling_price_xaf)
+      'À quel prix as-tu vendu « ' + p.name + ' »' + (soldImei ? ' (IMEI ' + soldImei + ')' : '') + ' ? (XAF)',
+      ''
     );
     if (priceStr === null) return;
     const price = parseFloat(priceStr);
@@ -349,11 +349,6 @@ export default function AdminPanel() {
   // Un produit déjà vendu (au moins une vente) ne peut plus être modifié.
   const isSold = (p: Product) => soldProductIds.includes(p.id) || soldIds.includes(p.id);
 
-  const margin = (cost: number, selling: number) => {
-    const profit = selling - cost;
-    const percent = cost > 0 ? ((profit / cost) * 100).toFixed(1) : 0;
-    return { profit, percent };
-  };
 
   if (!role) return null;
 
@@ -435,15 +430,6 @@ export default function AdminPanel() {
                 onChange={(e) => setFormData({ ...formData, cost_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
-              <input
-                type="number"
-                min="0"
-                placeholder="Prix de vente (XAF)"
-                required
-                value={formData.selling_price_xaf === 0 ? '' : formData.selling_price_xaf}
-                onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
-                className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-              />
               {parseImeis(formData.imei).length > 0 ? (
                 <div className="border rounded px-3 py-2 text-sm bg-gray-50 flex items-center text-gray-700">
                   📦 Stock :
@@ -492,8 +478,6 @@ export default function AdminPanel() {
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Produit</th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">IMEI</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Prix Achat</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Prix Vente</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Marge</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Stock</th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Actions</th>
               </tr>
@@ -501,19 +485,18 @@ export default function AdminPanel() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
                     Chargement...
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
                     Aucun produit. Cliquez sur "Ajouter Produit" pour commencer.
                   </td>
                 </tr>
               ) : (
                 products.map((p) => {
-                  const { profit, percent } = margin(p.cost_xaf, p.selling_price_xaf);
                   return (
                     <tr
                       key={p.id}
@@ -533,10 +516,6 @@ export default function AdminPanel() {
                         })()}
                       </td>
                       <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.cost_xaf.toLocaleString('fr-CM')} XAF</td>
-                      <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.selling_price_xaf.toLocaleString('fr-CM')} XAF</td>
-                      <td className="px-6 py-3 text-sm text-right text-green-600 font-semibold" style={cellStyle(p.id)}>
-                        +{profit.toLocaleString('fr-CM')} ({percent}%)
-                      </td>
                       <td className="px-6 py-3 text-sm text-right font-bold" style={cellStyle(p.id)}>
                         <span className={p.quantity_available <= 0 ? 'text-red-600' : 'text-gray-900'}>
                           {p.quantity_available}
@@ -554,9 +533,9 @@ export default function AdminPanel() {
                           {isSold(p) ? (
                             <span
                               className="text-gray-400 font-semibold"
-                              title="Prix figé : article déjà vendu, prix/nom non modifiables (le stock reste réapprovisionnable)"
+                              title="Article déjà vendu — infos non modifiables (le stock reste réapprovisionnable)"
                             >
-                              🔒 figé
+                              🔒 vendu
                             </span>
                           ) : (
                             <button
