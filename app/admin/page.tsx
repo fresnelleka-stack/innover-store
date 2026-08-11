@@ -353,15 +353,21 @@ export default function AdminPanel() {
                 onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
-              <input
-                type="number"
-                min="1"
-                placeholder="Quantité (ex: 5)"
-                required
-                value={formData.quantity_available === 0 ? '' : formData.quantity_available}
-                onChange={(e) => setFormData({ ...formData, quantity_available: parseInt(e.target.value) || 0 })}
-                className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-              />
+              {role === 'admin' ? (
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Quantité (ex: 5)"
+                  required
+                  value={formData.quantity_available === 0 ? '' : formData.quantity_available}
+                  onChange={(e) => setFormData({ ...formData, quantity_available: parseInt(e.target.value) || 0 })}
+                  className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
+                />
+              ) : (
+                <div className="border rounded px-3 py-2 text-sm text-gray-400 bg-gray-50 flex items-center">
+                  🔒 Stock géré par l'administrateur
+                </div>
+              )}
               <div className="flex gap-3">
                 <button
                   type="submit"
@@ -453,13 +459,15 @@ export default function AdminPanel() {
                               Modifier
                             </button>
                           )}
-                          <button
-                            onClick={() => handleRestock(p)}
-                            className="text-emerald-600 hover:text-emerald-800 font-semibold"
-                            title="Ajouter des pièces au stock (réapprovisionner)"
-                          >
-                            ➕ Stock
-                          </button>
+                          {role === 'admin' && (
+                            <button
+                              onClick={() => handleRestock(p)}
+                              className="text-emerald-600 hover:text-emerald-800 font-semibold"
+                              title="Ajouter des pièces au stock (réapprovisionner)"
+                            >
+                              ➕ Stock
+                            </button>
+                          )}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleDeleteProduct(p.id)}
