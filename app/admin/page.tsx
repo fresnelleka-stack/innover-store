@@ -31,38 +31,6 @@ const emptyFormData: ProductForm = {
   image_url: '',
 };
 
-// Compresse/redimensionne une photo (max 700px, JPEG ~72%) → data URL léger pour la base.
-const compressImage = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Lecture image impossible'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Image invalide'));
-      img.onload = () => {
-        const max = 700;
-        let { width, height } = img;
-        if (width > max || height > max) {
-          if (width >= height) {
-            height = Math.round((height * max) / width);
-            width = max;
-          } else {
-            width = Math.round((width * max) / height);
-            height = max;
-          }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas indisponible'));
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
 
 // La description est stockée dans la colonne `sku` (unique) sous la forme
 // "<code-unique>|~|<description>". On garde ainsi l'unicité sans changer la base.
@@ -505,32 +473,6 @@ export default function AdminPanel() {
     }
   };
 
-  // Fixer / changer le prix public (catalogue) affiché aux clients sur la vitrine.
-  const handleSetPublicPrice = async (p: Product) => {
-    const input = prompt(
-      'Prix public (catalogue) pour « ' + p.name + ' » en FCFA ?\n(0 ou vide = « Nous consulter »)',
-      p.selling_price_xaf ? String(p.selling_price_xaf) : ''
-    );
-    if (input === null) return;
-    const price = input.trim() === '' ? 0 : parseFloat(input);
-    if (!Number.isFinite(price) || price < 0) {
-      alert('Prix invalide.');
-      return;
-    }
-    try {
-      setError('');
-      const { data, error } = await supabase
-        .from('products')
-        .update({ selling_price_xaf: price })
-        .eq('id', p.id)
-        .select();
-      if (error) throw error;
-      if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
   const cellStyle = (id: string) =>
     soldIds.includes(id) ? { backgroundColor: '#bbf7d0' } : undefined;
 
@@ -614,57 +556,6 @@ export default function AdminPanel() {
               </select>
               <div className="md:col-span-2">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Infos / description du produit (affichée aux clients sur la vitrine)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ex : iPhone 11 64 Go, très bon état, batterie 90%, garantie 1 mois…"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm text-gray-600 mb-1">
-                  📷 Photo du produit (affichée sur la vitrine)
-                </label>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      try {
-                        const d = await compressImage(f);
-                        setFormData((prev) => ({ ...prev, image_url: d }));
-                      } catch {
-                        alert('Photo invalide, réessaie avec une autre image.');
-                      }
-                    }}
-                    className="text-sm text-gray-700"
-                  />
-                  {formData.image_url && (
-                    <div className="flex items-center gap-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={formData.image_url}
-                        alt="aperçu"
-                        className="h-16 w-16 object-cover rounded border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, image_url: '' }))}
-                        className="text-red-600 text-sm font-semibold"
-                      >
-                        Retirer
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm text-gray-600 mb-1">
                   IMEI — <span className="font-semibold">un par ligne</span> (un par appareil). Le stock = nombre d&apos;IMEI. Laisser vide pour un accessoire.
                 </label>
                 <textarea
@@ -692,15 +583,6 @@ export default function AdminPanel() {
                 value={formData.cost_xaf === 0 ? '' : formData.cost_xaf}
                 onChange={(e) => setFormData({ ...formData, cost_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-              />
-              <input
-                type="number"
-                min="0"
-                placeholder="Prix public / catalogue (FCFA)"
-                value={formData.selling_price_xaf === 0 ? '' : formData.selling_price_xaf}
-                onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
-                className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
-                title="Prix affiché aux clients sur la vitrine publique (laisser vide = 'Nous consulter')"
               />
               {parseImeis(formData.imei).length > 0 ? (
                 <div className="border rounded px-3 py-2 text-sm bg-gray-50 flex items-center text-gray-700">
@@ -775,24 +657,7 @@ export default function AdminPanel() {
                       className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>
-                        <div className="flex items-start gap-2">
-                          {p.image_url && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={p.image_url}
-                              alt={p.name}
-                              className="h-10 w-10 object-cover rounded border shrink-0"
-                            />
-                          )}
-                          <div>
-                            {p.name}
-                            {parseDesc(p.sku) && (
-                              <span className="block text-xs font-normal text-gray-500 mt-0.5 max-w-[200px]">
-                                {parseDesc(p.sku)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        {p.name}
                       </td>
                       <td className="px-6 py-3 text-sm text-gray-900 align-top">
                         {(() => {
@@ -898,15 +763,6 @@ export default function AdminPanel() {
                               Modifier
                             </button>
                           ) : null}
-                          {role === 'admin' && (
-                            <button
-                              onClick={() => handleSetPublicPrice(p)}
-                              className="text-red-600 hover:text-red-800 font-semibold"
-                              title="Prix public affiché sur la vitrine (catalogue)"
-                            >
-                              💲 Prix
-                            </button>
-                          )}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleRestock(p)}
