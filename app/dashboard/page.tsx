@@ -14,6 +14,8 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [sales, setSales] = useState<any[]>([]);
   const [stockRemaining, setStockRemaining] = useState(0);
+  const [productStocks, setProductStocks] = useState<any[]>([]);
+  const [stockSearch, setStockSearch] = useState('');
 
   useEffect(() => {
     const r = getRole();
@@ -55,8 +57,10 @@ export default function Dashboard() {
 
       const { data: prodData, error: prodErr } = await supabase
         .from('products')
-        .select('quantity_available');
+        .select('id, name, imei, category, quantity_available, quantity_sold')
+        .order('name', { ascending: true });
       if (prodErr) throw prodErr;
+      setProductStocks(prodData || []);
       setStockRemaining((prodData || []).reduce((s: number, p: any) => s + (p.quantity_available || 0), 0));
     } catch (err: any) {
       setError(err.message);
@@ -217,6 +221,70 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Stock par produit */}
+        <div className="bg-white rounded-lg shadow p-6 mt-8">
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <h2 className="text-xl font-bold text-gray-900">📦 Stock par produit</h2>
+            <input
+              type="text"
+              placeholder="Chercher un produit..."
+              value={stockSearch}
+              onChange={(e) => setStockSearch(e.target.value)}
+              className="border-2 border-gray-300 rounded px-3 py-2 text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          {loading ? (
+            <p className="text-gray-500 text-center py-6">Chargement...</p>
+          ) : productStocks.length === 0 ? (
+            <p className="text-gray-500 text-center py-6">Aucun produit</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b bg-gray-50">
+                  <tr>
+                    <th className="text-left py-2 px-2 font-semibold text-gray-700">Produit</th>
+                    <th className="text-right py-2 px-2 font-semibold text-gray-700">Vendus</th>
+                    <th className="text-right py-2 px-2 font-semibold text-gray-700">Stock restant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productStocks
+                    .filter(
+                      (p) =>
+                        p.name.toLowerCase().includes(stockSearch.toLowerCase()) ||
+                        (p.imei && String(p.imei).includes(stockSearch))
+                    )
+                    .map((p) => (
+                      <tr key={p.id} className="border-b last:border-b-0">
+                        <td className="py-2 px-2">
+                          <span className="font-medium text-gray-900">{p.name}</span>
+                          {p.imei && <span className="text-xs text-gray-500 ml-2">IMEI: {p.imei}</span>}
+                        </td>
+                        <td className="py-2 px-2 text-right text-gray-600">{p.quantity_sold || 0}</td>
+                        <td className="py-2 px-2 text-right font-bold">
+                          <span
+                            className={
+                              p.quantity_available <= 0
+                                ? 'text-red-600'
+                                : p.quantity_available <= 2
+                                ? 'text-orange-500'
+                                : 'text-green-600'
+                            }
+                          >
+                            {p.quantity_available}
+                          </span>
+                          {p.quantity_available <= 0 && (
+                            <span className="ml-2 text-xs text-red-600">(épuisé)</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </main>
     </div>
