@@ -406,13 +406,15 @@ export default function AdminPanel() {
                           >
                             Modifier
                           </button>
-                          <button
-                            onClick={() => handleDeleteProduct(p.id)}
-                            disabled={deletingId === p.id}
-                            className="text-red-600 hover:text-red-800 font-semibold disabled:text-gray-400"
-                          >
-                            {deletingId === p.id ? '...' : 'Supprimer'}
-                          </button>
+                          {role === 'admin' && (
+                            <button
+                              onClick={() => handleDeleteProduct(p.id)}
+                              disabled={deletingId === p.id}
+                              className="text-red-600 hover:text-red-800 font-semibold disabled:text-gray-400"
+                            >
+                              {deletingId === p.id ? '...' : 'Supprimer'}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
