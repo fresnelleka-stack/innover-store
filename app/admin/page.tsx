@@ -640,14 +640,14 @@ export default function AdminPanel() {
                             >
                               🔒 vendu
                             </span>
-                          ) : (
+                          ) : role === 'admin' ? (
                             <button
                               onClick={() => handleEditClick(p)}
                               className="text-blue-600 hover:text-blue-800 font-semibold"
                             >
                               Modifier
                             </button>
-                          )}
+                          ) : null}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleRestock(p)}
