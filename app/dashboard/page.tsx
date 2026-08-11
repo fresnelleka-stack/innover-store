@@ -260,7 +260,14 @@ export default function Dashboard() {
                       <tr key={p.id} className="border-b last:border-b-0">
                         <td className="py-2 px-2">
                           <span className="font-medium text-gray-900">{p.name}</span>
-                          {p.imei && <span className="text-xs text-gray-500 ml-2">IMEI: {p.imei}</span>}
+                          {p.imei && (() => {
+                            const list = String(p.imei).split(/[\n,]+/).map((x: string) => x.trim()).filter(Boolean);
+                            return (
+                              <span className="text-xs text-gray-500 ml-2">
+                                {list.length > 1 ? list.length + ' IMEI' : 'IMEI: ' + list[0]}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="py-2 px-2 text-right text-gray-600">{p.quantity_sold || 0}</td>
                         <td className="py-2 px-2 text-right font-bold">

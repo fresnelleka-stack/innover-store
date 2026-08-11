@@ -42,20 +42,27 @@ export default function AdminPanel() {
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
-  // Détection auto: renvoie le nom du produit qui a déjà cet IMEI, sinon null
-  const findImeiOwner = async (imei: string): Promise<string | null> => {
-    const clean = imei.trim();
-    if (!clean) return null;
-    let q = supabase.from('products').select('id, name').eq('imei', clean);
-    if (editingId) q = q.neq('id', editingId);
-    const { data, error } = await q.limit(1);
-    if (error) return null;
-    return data && data.length > 0 ? data[0].name : null;
-  };
+  // Un produit peut avoir plusieurs IMEI (un par appareil), saisis un par ligne.
+  const parseImeis = (s: string | null | undefined): string[] =>
+    (s || '')
+      .split(/[\n,]+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
 
-  const checkImei = async (imei: string) => {
-    const owner = await findImeiOwner(imei);
-    setImeiWarning(owner ? 'Cet IMEI est déjà enregistré (produit : ' + owner + ')' : '');
+  // Cherche si un des IMEI est déjà enregistré ailleurs. Renvoie {imei, name} ou null.
+  const findImeiConflict = async (
+    imeis: string[]
+  ): Promise<{ imei: string; name: string } | null> => {
+    if (imeis.length === 0) return null;
+    let q = supabase.from('products').select('id, name, imei');
+    if (editingId) q = q.neq('id', editingId);
+    const { data, error } = await q;
+    if (error) return null;
+    for (const p of data || []) {
+      const set = new Set(parseImeis(p.imei));
+      for (const im of imeis) if (set.has(im)) return { imei: im, name: p.name };
+    }
+    return null;
   };
 
   useEffect(() => {
@@ -106,28 +113,37 @@ export default function AdminPanel() {
     e.preventDefault();
     try {
       setError('');
-      const imei = formData.imei.trim() === '' ? null : formData.imei.trim();
+      const imeiList = parseImeis(formData.imei);
+      const imei = imeiList.length > 0 ? imeiList.join('\n') : null;
+      // Stock = nombre d'IMEI si des IMEI sont fournis, sinon la quantité saisie.
+      const quantity_available =
+        imeiList.length > 0 ? imeiList.length : formData.quantity_available;
 
-      // Détection auto: refuser un IMEI déjà présent dans le système
-      if (imei) {
-        const owner = await findImeiOwner(imei);
-        if (owner) {
-          setError('Cet IMEI est déjà enregistré dans le système (produit : ' + owner + '). Impossible de l\'ajouter deux fois.');
-          return;
-        }
+      // Refuser un IMEI déjà présent (sur n'importe quel produit)
+      const conflict = await findImeiConflict(imeiList);
+      if (conflict) {
+        setImeiWarning(
+          'IMEI déjà enregistré : ' + conflict.imei + ' (produit : ' + conflict.name + ')'
+        );
+        setError(
+          'IMEI en double : ' + conflict.imei + ' est déjà sur le produit « ' + conflict.name + ' ».'
+        );
+        return;
       }
+
+      const base = { ...formData, imei, quantity_available };
 
       if (editingId) {
         const { data, error } = await supabase
           .from('products')
-          .update({ ...formData, imei })
+          .update(base)
           .eq('id', editingId)
           .select();
 
         if (error) throw error;
         if (data) setProducts(products.map((p) => (p.id === editingId ? data[0] : p)));
       } else {
-        const payload = { ...formData, imei, sku: generateSku(formData.category) };
+        const payload = { ...base, sku: generateSku(formData.category) };
         const { data, error } = await supabase
           .from('products')
           .insert([payload])
@@ -194,9 +210,26 @@ export default function AdminPanel() {
       alert('Stock épuisé pour ' + p.name);
       return;
     }
+    // Choix de l'appareil vendu si le produit a plusieurs IMEI.
+    const imeiList = parseImeis(p.imei);
+    let soldImei: string | null = null;
+    if (imeiList.length === 1) {
+      soldImei = imeiList[0];
+    } else if (imeiList.length > 1) {
+      const menu = imeiList.map((im, i) => (i + 1) + ') ' + im).join('\n');
+      const choice = prompt('Quel appareil vends-tu ? Entre le numéro :\n' + menu, '1');
+      if (choice === null) return;
+      const idx = parseInt(choice, 10);
+      if (!Number.isFinite(idx) || idx < 1 || idx > imeiList.length) {
+        alert('Numéro invalide.');
+        return;
+      }
+      soldImei = imeiList[idx - 1];
+    }
+
     // Le vendeur saisit le prix de vente réel (pré-rempli avec le prix conseillé).
     const priceStr = prompt(
-      'Prix de vente de « ' + p.name +' » (XAF) ?',
+      'Prix de vente de « ' + p.name + ' »' + (soldImei ? ' (IMEI ' + soldImei + ')' : '') + ' (XAF) ?',
       String(p.selling_price_xaf)
     );
     if (priceStr === null) return;
@@ -211,7 +244,7 @@ export default function AdminPanel() {
 
       const { error: saleError } = await supabase.from('sales').insert([{
         product_id: p.id,
-        imei: p.imei,
+        imei: soldImei,
         quantity: 1,
         unit_price_xaf: price,
         total_price_xaf: price,
@@ -221,11 +254,17 @@ export default function AdminPanel() {
       }]);
       if (saleError) throw saleError;
 
+      // Retirer l'IMEI vendu de la liste du produit.
+      const remaining = imeiList.filter((im) => im !== soldImei);
+      const newImei =
+        imeiList.length > 0 ? (remaining.length > 0 ? remaining.join('\n') : null) : p.imei;
+
       const { data, error: updError } = await supabase
         .from('products')
         .update({
           quantity_available: p.quantity_available - 1,
           quantity_sold: (p.quantity_sold || 0) + 1,
+          imei: newImei,
         })
         .eq('id', p.id)
         .select();
@@ -240,9 +279,49 @@ export default function AdminPanel() {
     }
   };
 
-  // Réapprovisionner : ajoute des pièces au stock (ne touche pas au prix,
-  // donc reste possible même sur un produit déjà vendu / au prix figé).
+  // Réapprovisionner (ne touche pas au prix → possible même sur un produit « figé »).
   const handleRestock = async (p: Product) => {
+    const existing = parseImeis(p.imei);
+
+    // Produit à IMEI : on ajoute de nouveaux IMEI (un par ligne). Stock = nombre d'IMEI.
+    if (existing.length > 0) {
+      const input = prompt(
+        'Ajouter des appareils à « ' + p.name + ' » : entre les nouveaux IMEI, un par ligne.',
+        ''
+      );
+      if (input === null) return;
+      const toAdd = parseImeis(input);
+      if (toAdd.length === 0) {
+        alert('Aucun IMEI saisi.');
+        return;
+      }
+      const dupHere = toAdd.find((im) => existing.includes(im));
+      if (dupHere) {
+        alert('IMEI déjà dans ce produit : ' + dupHere);
+        return;
+      }
+      const conflict = await findImeiConflict(toAdd);
+      if (conflict) {
+        alert('IMEI déjà enregistré ailleurs : ' + conflict.imei + ' (produit : ' + conflict.name + ')');
+        return;
+      }
+      const merged = existing.concat(toAdd);
+      try {
+        setError('');
+        const { data, error } = await supabase
+          .from('products')
+          .update({ quantity_available: merged.length, imei: merged.join('\n') })
+          .eq('id', p.id)
+          .select();
+        if (error) throw error;
+        if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+      } catch (err: any) {
+        setError(err.message);
+      }
+      return;
+    }
+
+    // Produit sans IMEI (accessoire) : on ajoute un nombre de pièces.
     const input = prompt('Combien de pièces ajouter au stock de « ' + p.name + ' » ?', '1');
     if (input === null) return;
     const n = parseInt(input, 10);
@@ -326,16 +405,18 @@ export default function AdminPanel() {
                 <option value="accessory">Accessoire</option>
                 <option value="other">Autre</option>
               </select>
-              <div>
-                <input
-                  type="text"
-                  placeholder="IMEI (si applicable)"
+              <div className="md:col-span-2">
+                <label className="block text-sm text-gray-600 mb-1">
+                  IMEI — <span className="font-semibold">un par ligne</span> (un par appareil). Le stock = nombre d&apos;IMEI. Laisser vide pour un accessoire.
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder={'Un IMEI par ligne, ex :\n355111111111111\n355222222222222'}
                   value={formData.imei}
                   onChange={(e) => {
                     setFormData({ ...formData, imei: e.target.value });
                     if (imeiWarning) setImeiWarning('');
                   }}
-                  onBlur={(e) => checkImei(e.target.value)}
                   className={
                     'w-full border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 ' +
                     (imeiWarning ? 'border-red-500' : '')
@@ -363,12 +444,17 @@ export default function AdminPanel() {
                 onChange={(e) => setFormData({ ...formData, selling_price_xaf: parseFloat(e.target.value) || 0 })}
                 className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
               />
-              {role === 'admin' ? (
+              {parseImeis(formData.imei).length > 0 ? (
+                <div className="border rounded px-3 py-2 text-sm bg-gray-50 flex items-center text-gray-700">
+                  📦 Stock :
+                  <span className="font-bold ml-1">{parseImeis(formData.imei).length}</span>
+                  <span className="ml-1 text-gray-400">(= nombre d&apos;IMEI)</span>
+                </div>
+              ) : role === 'admin' ? (
                 <input
                   type="number"
                   min="1"
                   placeholder="Quantité (ex: 5)"
-                  required
                   value={formData.quantity_available === 0 ? '' : formData.quantity_available}
                   onChange={(e) => setFormData({ ...formData, quantity_available: parseInt(e.target.value) || 0 })}
                   className="border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400"
@@ -434,7 +520,18 @@ export default function AdminPanel() {
                       className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>{p.name}</td>
-                      <td className="px-6 py-3 text-sm text-gray-900" style={cellStyle(p.id)}>{p.imei || '-'}</td>
+                      <td className="px-6 py-3 text-sm text-gray-900" style={cellStyle(p.id)}>
+                        {(() => {
+                          const list = parseImeis(p.imei);
+                          if (list.length === 0) return '-';
+                          if (list.length === 1) return list[0];
+                          return (
+                            <span title={list.join('\n')} className="font-semibold text-blue-700">
+                              {list.length} IMEI
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.cost_xaf.toLocaleString('fr-CM')} XAF</td>
                       <td className="px-6 py-3 text-sm text-right text-gray-900" style={cellStyle(p.id)}>{p.selling_price_xaf.toLocaleString('fr-CM')} XAF</td>
                       <td className="px-6 py-3 text-sm text-right text-green-600 font-semibold" style={cellStyle(p.id)}>
