@@ -24,6 +24,7 @@ export default function Storefront() {
   const [showLogin, setShowLogin] = useState(false);
   const [code, setCode] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [zoom, setZoom] = useState<any>(null);
 
   useEffect(() => {
     setIsStaff(!!getRole());
@@ -125,17 +126,27 @@ export default function Storefront() {
               const v = catVisual(p.category);
               return (
                 <div key={p.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition flex gap-3 p-3">
-                  {/* Photo à gauche */}
-                  <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden">
+                  {/* Photo à gauche (cliquable pour agrandir) */}
+                  <button
+                    type="button"
+                    onClick={() => p.image_url && setZoom(p)}
+                    className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden relative group"
+                    title={p.image_url ? 'Cliquer pour agrandir la photo' : undefined}
+                  >
                     {p.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
+                          🔍
+                        </span>
+                      </>
                     ) : (
                       <div className={'w-full h-full bg-gradient-to-br ' + v.grad + ' flex items-center justify-center text-4xl'}>
                         {v.emoji}
                       </div>
                     )}
-                  </div>
+                  </button>
 
                   {/* Infos à droite */}
                   <div className="flex-1 min-w-0 flex flex-col">
@@ -171,6 +182,48 @@ export default function Storefront() {
           </div>
         )}
       </main>
+
+      {/* Photo agrandie (clients) */}
+      {zoom && (
+        <div
+          className="fixed inset-0 bg-black/85 z-50 flex flex-col items-center justify-center p-4"
+          onClick={() => setZoom(null)}
+        >
+          <button
+            onClick={() => setZoom(null)}
+            className="absolute top-4 right-4 text-white text-3xl leading-none"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoom.image_url}
+            alt={zoom.name}
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
+          />
+          <div
+            className="mt-4 w-full max-w-md bg-white rounded-xl p-4 flex items-center justify-between gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-900 text-sm leading-snug">{zoom.name}</p>
+              <p className="text-red-600 font-extrabold text-lg">
+                {zoom.price_fcfa > 0 ? fmt(zoom.price_fcfa) + ' FCFA' : 'Nous consulter'}
+              </p>
+            </div>
+            <a
+              href={WHATSAPP}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2 rounded-lg"
+            >
+              Acheter
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Popup de connexion (staff) */}
       {showLogin && (
