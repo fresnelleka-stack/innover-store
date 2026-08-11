@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Product } from '@/lib/supabase';
+import { getRole, type Role } from '@/lib/auth';
+import Header from '../components/Header';
 
 export default function SellerPage() {
+  const router = useRouter();
+  const [role, setRole] = useState<Role | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,9 +18,19 @@ export default function SellerPage() {
   const [recentSales, setRecentSales] = useState<any[]>([]);
 
   useEffect(() => {
+    const r = getRole();
+    if (!r) {
+      router.replace('/login');
+      return;
+    }
+    setRole(r);
+  }, [router]);
+
+  useEffect(() => {
+    if (!role) return;
     loadProducts();
     loadRecentSales();
-  }, []);
+  }, [role]);
 
   const loadProducts = async () => {
     try {
@@ -92,21 +106,18 @@ export default function SellerPage() {
     }
   };
 
+  if (!role) return null;
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Point de Vente</h1>
-            <p className="text-gray-600">Enregistrer une vente</p>
-          </div>
-          <Link href="/" className="text-blue-600 hover:text-blue-800">
-            ← Retour
-          </Link>
-        </div>
-      </header>
+      <Header role={role} />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Point de Vente</h1>
+          <p className="text-gray-600">Enregistrer une vente</p>
+        </div>
+
         {error && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded">
             <p className="text-red-800">{error}</p>

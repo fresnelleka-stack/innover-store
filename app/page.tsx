@@ -1,43 +1,63 @@
-import Link from "next/link";
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { getRole, type Role } from '@/lib/auth';
+import Header from './components/Header';
 
 export default function Home() {
+  const router = useRouter();
+  const [role, setRole] = useState<Role | null>(null);
+
+  useEffect(() => {
+    const r = getRole();
+    if (!r) {
+      router.replace('/login');
+      return;
+    }
+    setRole(r);
+  }, [router]);
+
+  if (!role) return null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">INNOVER STORE</h1>
-          <p className="text-gray-600">Gestion Professionnelle de Boutique</p>
+    <div className="min-h-screen bg-gray-50">
+      <Header role={role} />
+
+      <main className="max-w-3xl mx-auto px-6 py-12">
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900">Bienvenue</h1>
+          <p className="text-gray-600 mt-1">
+            {role === 'admin' ? 'Accès administrateur (complet)' : 'Accès vendeur'}
+          </p>
         </div>
 
-        <div className="space-y-4">
-          <Link
-            href="/admin"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition block text-center"
-          >
-            📊 Admin Panel
-          </Link>
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Link
             href="/seller"
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition block text-center"
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-6 px-4 rounded-lg text-center text-lg transition"
           >
             🛒 Vendre un Article
           </Link>
 
           <Link
             href="/dashboard"
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition block text-center"
+            className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-6 px-4 rounded-lg text-center text-lg transition"
           >
             📈 Tableau de Bord
           </Link>
-        </div>
 
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-gray-700">
-            <strong>Configuration:</strong> Connectez votre compte Supabase dans les paramètres pour commencer.
-          </p>
+          {role === 'admin' && (
+            <Link
+              href="/admin"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-6 px-4 rounded-lg text-center text-lg transition sm:col-span-2"
+            >
+              📊 Gérer les Produits (Admin)
+            </Link>
+          )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

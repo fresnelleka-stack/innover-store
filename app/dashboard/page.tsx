@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { getRole, type Role } from '@/lib/auth';
+import Header from '../components/Header';
 
 export default function Dashboard() {
+  const router = useRouter();
+  const [role, setRole] = useState<Role | null>(null);
   const [dateRange, setDateRange] = useState('today');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -12,8 +16,17 @@ export default function Dashboard() {
   const [stockRemaining, setStockRemaining] = useState(0);
 
   useEffect(() => {
-    loadData();
-  }, [dateRange]);
+    const r = getRole();
+    if (!r) {
+      router.replace('/login');
+      return;
+    }
+    setRole(r);
+  }, [router]);
+
+  useEffect(() => {
+    if (role) loadData();
+  }, [dateRange, role]);
 
   const loadData = async () => {
     try {
@@ -78,21 +91,18 @@ export default function Dashboard() {
     );
   };
 
+  if (!role) return null;
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Tableau de Bord</h1>
-            <p className="text-gray-600">Statistiques et rapports</p>
-          </div>
-          <Link href="/" className="text-blue-600 hover:text-blue-800">
-            ← Retour
-          </Link>
-        </div>
-      </header>
+      <Header role={role} />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Tableau de Bord</h1>
+          <p className="text-gray-600">Statistiques et rapports</p>
+        </div>
+
         {error && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded">
             <p className="text-red-800">{error}</p>
