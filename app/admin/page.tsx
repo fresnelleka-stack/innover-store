@@ -39,6 +39,8 @@ export default function AdminPanel() {
   const [sellingId, setSellingId] = useState<string | null>(null);
   const [soldIds, setSoldIds] = useState<string[]>([]);
   const [soldProductIds, setSoldProductIds] = useState<string[]>([]);
+  const [soldImeis, setSoldImeis] = useState<string[]>([]);
+  const [sellingImei, setSellingImei] = useState<string | null>(null);
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
@@ -90,12 +92,16 @@ export default function AdminPanel() {
       if (error) throw error;
       setProducts(data || []);
 
-      // Produits ayant déjà au moins une vente → non modifiables
-      const { data: soldRows } = await supabase.from('sales').select('product_id');
+      // Ventes déjà enregistrées : produits vendus (non modifiables) + IMEI vendus (affichés en vert)
+      const { data: soldRows } = await supabase.from('sales').select('product_id, imei');
       const ids = Array.from(
         new Set((soldRows || []).map((r: any) => r.product_id).filter(Boolean))
       ) as string[];
       setSoldProductIds(ids);
+      const imeis = Array.from(
+        new Set((soldRows || []).map((r: any) => (r.imei ? String(r.imei).trim() : '')).filter(Boolean))
+      ) as string[];
+      setSoldImeis(imeis);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -279,6 +285,57 @@ export default function AdminPanel() {
     }
   };
 
+  // Vendre un IMEI précis (au clic). L'IMEI reste affiché mais passe en vert (vendu).
+  const handleSellImei = async (p: Product, imei: string) => {
+    if (soldImeis.includes(imei)) return; // déjà vendu
+    const priceStr = prompt(
+      'À quel prix as-tu vendu « ' + p.name + ' » (IMEI ' + imei + ') ? (XAF)',
+      ''
+    );
+    if (priceStr === null) return;
+    const price = parseFloat(priceStr);
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Entrez un prix de vente valide.');
+      return;
+    }
+    try {
+      setError('');
+      setSellingImei(imei);
+      const { error: saleError } = await supabase.from('sales').insert([
+        {
+          product_id: p.id,
+          imei,
+          quantity: 1,
+          unit_price_xaf: price,
+          total_price_xaf: price,
+          profit_xaf: price - p.cost_xaf,
+          seller_id: null,
+          seller_name: 'Vendeur',
+        },
+      ]);
+      if (saleError) throw saleError;
+
+      // On NE retire PAS l'IMEI : il reste affiché en vert. Le stock (disponibles) baisse de 1.
+      const { data, error: updError } = await supabase
+        .from('products')
+        .update({
+          quantity_available: Math.max(0, p.quantity_available - 1),
+          quantity_sold: (p.quantity_sold || 0) + 1,
+        })
+        .eq('id', p.id)
+        .select();
+      if (updError) throw updError;
+      if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+
+      setSoldImeis((prev) => (prev.includes(imei) ? prev : [...prev, imei]));
+      setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSellingImei(null);
+    }
+  };
+
   // Réapprovisionner (ne touche pas au prix → possible même sur un produit « figé »).
   const handleRestock = async (p: Product) => {
     const existing = parseImeis(p.imei);
@@ -310,7 +367,8 @@ export default function AdminPanel() {
         setError('');
         const { data, error } = await supabase
           .from('products')
-          .update({ quantity_available: merged.length, imei: merged.join('\n') })
+          // stock disponible = ancien dispo + nouveaux IMEI (les vendus restent dans la liste)
+          .update({ quantity_available: p.quantity_available + toAdd.length, imei: merged.join('\n') })
           .eq('id', p.id)
           .select();
         if (error) throw error;
@@ -503,15 +561,39 @@ export default function AdminPanel() {
                       className={'border-b transition-colors ' + (soldIds.includes(p.id) ? '' : 'hover:bg-gray-50')}
                     >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900" style={cellStyle(p.id)}>{p.name}</td>
-                      <td className="px-6 py-3 text-sm text-gray-900" style={cellStyle(p.id)}>
+                      <td className="px-6 py-3 text-sm text-gray-900 align-top">
                         {(() => {
                           const list = parseImeis(p.imei);
-                          if (list.length === 0) return '-';
-                          if (list.length === 1) return list[0];
+                          if (list.length === 0) return <span className="text-gray-400">-</span>;
                           return (
-                            <span title={list.join('\n')} className="font-semibold text-blue-700">
-                              {list.length} IMEI
-                            </span>
+                            <div className="space-y-1 min-w-[190px]">
+                              {list.map((im) =>
+                                soldImeis.includes(im) ? (
+                                  <div
+                                    key={im}
+                                    title="Vendu"
+                                    className="text-xs font-mono px-2 py-1 rounded bg-green-200 text-green-900 flex items-center gap-1"
+                                  >
+                                    <span>✓</span>
+                                    <span>{im}</span>
+                                    <span className="ml-auto font-semibold text-green-700">vendu</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    key={im}
+                                    onClick={() => handleSellImei(p, im)}
+                                    disabled={sellingImei === im}
+                                    title="Cliquer pour vendre cet appareil"
+                                    className="w-full text-left text-xs font-mono px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50 flex items-center gap-1"
+                                  >
+                                    <span>{im}</span>
+                                    <span className="ml-auto text-blue-400">
+                                      {sellingImei === im ? '...' : '🛒 vendre'}
+                                    </span>
+                                  </button>
+                                )
+                              )}
+                            </div>
                           );
                         })()}
                       </td>
@@ -523,13 +605,15 @@ export default function AdminPanel() {
                       </td>
                       <td className="px-6 py-3 text-sm text-right" style={cellStyle(p.id)}>
                         <div className="flex gap-2 justify-end items-center">
-                          <button
-                            onClick={() => handleSell(p)}
-                            disabled={sellingId === p.id || p.quantity_available <= 0}
-                            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded disabled:bg-gray-300 disabled:text-gray-500"
-                          >
-                            {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : soldIds.includes(p.id) ? '✓ Vendu' : 'Vendre'}
-                          </button>
+                          {parseImeis(p.imei).length === 0 && (
+                            <button
+                              onClick={() => handleSell(p)}
+                              disabled={sellingId === p.id || p.quantity_available <= 0}
+                              className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded disabled:bg-gray-300 disabled:text-gray-500"
+                            >
+                              {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : soldIds.includes(p.id) ? '✓ Vendu' : 'Vendre'}
+                            </button>
+                          )}
                           {isSold(p) ? (
                             <span
                               className="text-gray-400 font-semibold"
