@@ -16,6 +16,8 @@ export default function SellerPage() {
   const [sellingId, setSellingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [recentSales, setRecentSales] = useState<any[]>([]);
+  // Prix de vente saisi par le vendeur pour chaque produit (pré-rempli avec le prix enregistré).
+  const [priceInputs, setPriceInputs] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const r = getRole();
@@ -43,6 +45,14 @@ export default function SellerPage() {
 
       if (error) throw error;
       setProducts(data || []);
+      // Pré-remplir chaque prix avec le prix de vente enregistré (le vendeur peut le changer).
+      setPriceInputs((prev) => {
+        const next = { ...prev };
+        (data || []).forEach((p: Product) => {
+          if (next[p.id] === undefined) next[p.id] = p.selling_price_xaf;
+        });
+        return next;
+      });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -71,7 +81,12 @@ export default function SellerPage() {
 
   const handleSell = async (p: Product) => {
     if (p.quantity_available <= 0) return;
-    if (!confirm('Confirmer la vente de ' + p.name + ' ?')) return;
+    const price = Number(priceInputs[p.id] ?? p.selling_price_xaf);
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Entrez un prix de vente valide pour ' + p.name + '.');
+      return;
+    }
+    if (!confirm('Vendre ' + p.name + ' à ' + price.toLocaleString('fr-CM') + ' XAF ?')) return;
     try {
       setError('');
       setSellingId(p.id);
@@ -80,9 +95,9 @@ export default function SellerPage() {
         product_id: p.id,
         imei: p.imei,
         quantity: 1,
-        unit_price_xaf: p.selling_price_xaf,
-        total_price_xaf: p.selling_price_xaf,
-        profit_xaf: p.selling_price_xaf - p.cost_xaf,
+        unit_price_xaf: price,
+        total_price_xaf: price,
+        profit_xaf: price - p.cost_xaf,
         seller_id: null,
         seller_name: 'Vendeur',
       }]);
@@ -146,21 +161,34 @@ export default function SellerPage() {
           ) : (
             filteredProducts.map((product) => (
               <div key={product.id} className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-lg text-gray-900">{product.name}</h3>
-                    {product.imei && <p className="text-sm text-gray-600">IMEI: {product.imei}</p>}
-                    <p className="text-sm mt-2">
-                      <span className="text-green-600 font-semibold">{product.selling_price_xaf.toLocaleString('fr-CM')} XAF</span>
-                      <span className="text-gray-500 ml-2 line-through">{product.cost_xaf.toLocaleString('fr-CM')} XAF</span>
+                    {product.imei && <p className="text-sm text-gray-600 truncate">IMEI: {product.imei}</p>}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Prix conseillé : {product.selling_price_xaf.toLocaleString('fr-CM')} XAF · Stock :{' '}
+                      <span className="font-semibold text-gray-900">{product.quantity_available}</span>
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600 mb-2">Stock: <span className="font-semibold text-gray-900">{product.quantity_available}</span></p>
+                  <div className="text-right shrink-0">
+                    <label className="block text-xs text-gray-500 mb-1">Prix de vente (XAF)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={priceInputs[product.id] ?? product.selling_price_xaf}
+                      onChange={(e) =>
+                        setPriceInputs((prev) => ({
+                          ...prev,
+                          [product.id]: e.target.value === '' ? 0 : parseFloat(e.target.value),
+                        }))
+                      }
+                      className="w-32 border-2 border-gray-300 rounded px-3 py-2 text-right text-gray-900 bg-white focus:outline-none focus:border-green-500 mb-2"
+                    />
                     <button
                       onClick={() => handleSell(product)}
                       disabled={sellingId === product.id || product.quantity_available === 0}
-                      className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-2 px-6 rounded transition"
+                      className="block w-32 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-semibold py-2 px-6 rounded transition"
                     >
                       {sellingId === product.id ? '...' : 'Vendre'}
                     </button>
