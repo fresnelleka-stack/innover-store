@@ -40,6 +40,8 @@ export default function AdminPanel() {
   const [soldIds, setSoldIds] = useState<string[]>([]);
   const [soldProductIds, setSoldProductIds] = useState<string[]>([]);
   const [soldImeis, setSoldImeis] = useState<string[]>([]);
+  const [soldImeiPrice, setSoldImeiPrice] = useState<Record<string, number>>({});
+  const [imeiPrices, setImeiPrices] = useState<Record<string, string>>({});
   const [sellingImei, setSellingImei] = useState<string | null>(null);
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
@@ -93,7 +95,7 @@ export default function AdminPanel() {
       setProducts(data || []);
 
       // Ventes déjà enregistrées : produits vendus (non modifiables) + IMEI vendus (affichés en vert)
-      const { data: soldRows } = await supabase.from('sales').select('product_id, imei');
+      const { data: soldRows } = await supabase.from('sales').select('product_id, imei, total_price_xaf');
       const ids = Array.from(
         new Set((soldRows || []).map((r: any) => r.product_id).filter(Boolean))
       ) as string[];
@@ -102,6 +104,11 @@ export default function AdminPanel() {
         new Set((soldRows || []).map((r: any) => (r.imei ? String(r.imei).trim() : '')).filter(Boolean))
       ) as string[];
       setSoldImeis(imeis);
+      const priceMap: Record<string, number> = {};
+      (soldRows || []).forEach((r: any) => {
+        if (r.imei) priceMap[String(r.imei).trim()] = Number(r.total_price_xaf) || 0;
+      });
+      setSoldImeiPrice(priceMap);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -285,17 +292,12 @@ export default function AdminPanel() {
     }
   };
 
-  // Vendre un IMEI précis (au clic). L'IMEI reste affiché mais passe en vert (vendu).
+  // Vendre un IMEI précis. Le prix vient du champ saisi à côté de l'IMEI.
   const handleSellImei = async (p: Product, imei: string) => {
     if (soldImeis.includes(imei)) return; // déjà vendu
-    const priceStr = prompt(
-      'À quel prix as-tu vendu « ' + p.name + ' » (IMEI ' + imei + ') ? (XAF)',
-      ''
-    );
-    if (priceStr === null) return;
-    const price = parseFloat(priceStr);
+    const price = parseFloat(imeiPrices[imei] || '');
     if (!Number.isFinite(price) || price <= 0) {
-      alert('Entrez un prix de vente valide.');
+      alert('Entrez d\'abord le prix de vente.');
       return;
     }
     try {
@@ -328,6 +330,12 @@ export default function AdminPanel() {
       if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
 
       setSoldImeis((prev) => (prev.includes(imei) ? prev : [...prev, imei]));
+      setSoldImeiPrice((prev) => ({ ...prev, [imei]: price }));
+      setImeiPrices((prev) => {
+        const next = { ...prev };
+        delete next[imei];
+        return next;
+      });
       setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     } catch (err: any) {
       setError(err.message);
@@ -566,31 +574,42 @@ export default function AdminPanel() {
                           const list = parseImeis(p.imei);
                           if (list.length === 0) return <span className="text-gray-400">-</span>;
                           return (
-                            <div className="space-y-1 min-w-[190px]">
+                            <div className="space-y-1 min-w-[260px]">
                               {list.map((im) =>
                                 soldImeis.includes(im) ? (
                                   <div
                                     key={im}
                                     title="Vendu"
-                                    className="text-xs font-mono px-2 py-1 rounded bg-green-200 text-green-900 flex items-center gap-1"
+                                    className="text-xs font-mono px-2 py-1 rounded bg-green-200 text-green-900 flex items-center gap-2"
                                   >
                                     <span>✓</span>
                                     <span>{im}</span>
-                                    <span className="ml-auto font-semibold text-green-700">vendu</span>
+                                    <span className="ml-auto font-semibold text-green-800">
+                                      {soldImeiPrice[im] ? soldImeiPrice[im].toLocaleString('fr-CM') + ' XAF' : ''} vendu
+                                    </span>
                                   </div>
                                 ) : (
-                                  <button
-                                    key={im}
-                                    onClick={() => handleSellImei(p, im)}
-                                    disabled={sellingImei === im}
-                                    title="Cliquer pour vendre cet appareil"
-                                    className="w-full text-left text-xs font-mono px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50 flex items-center gap-1"
-                                  >
-                                    <span>{im}</span>
-                                    <span className="ml-auto text-blue-400">
-                                      {sellingImei === im ? '...' : '🛒 vendre'}
-                                    </span>
-                                  </button>
+                                  <div key={im} className="flex items-center gap-1">
+                                    <span className="font-mono text-xs text-gray-800 flex-1">{im}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="Prix"
+                                      value={imeiPrices[im] ?? ''}
+                                      onChange={(e) =>
+                                        setImeiPrices((prev) => ({ ...prev, [im]: e.target.value }))
+                                      }
+                                      className="w-20 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 bg-white"
+                                    />
+                                    <button
+                                      onClick={() => handleSellImei(p, im)}
+                                      disabled={sellingImei === im || !(parseFloat(imeiPrices[im] || '') > 0)}
+                                      title="Entrer le prix puis cliquer Vendu"
+                                      className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-2 py-1 rounded disabled:bg-gray-300 disabled:text-gray-500"
+                                    >
+                                      {sellingImei === im ? '...' : 'Vendu'}
+                                    </button>
+                                  </div>
                                 )
                               )}
                             </div>
