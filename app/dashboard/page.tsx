@@ -14,6 +14,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [sales, setSales] = useState<any[]>([]);
   const [stockRemaining, setStockRemaining] = useState(0);
+  const [stockValue, setStockValue] = useState(0);
   const [productStocks, setProductStocks] = useState<any[]>([]);
   const [stockSearch, setStockSearch] = useState('');
 
@@ -57,11 +58,17 @@ export default function Dashboard() {
 
       const { data: prodData, error: prodErr } = await supabase
         .from('products')
-        .select('id, name, imei, category, quantity_available, quantity_sold')
+        .select('id, name, imei, category, cost_xaf, quantity_available, quantity_sold')
         .order('name', { ascending: true });
       if (prodErr) throw prodErr;
       setProductStocks(prodData || []);
       setStockRemaining((prodData || []).reduce((s: number, p: any) => s + (p.quantity_available || 0), 0));
+      setStockValue(
+        (prodData || []).reduce(
+          (s: number, p: any) => s + Number(p.quantity_available || 0) * Number(p.cost_xaf || 0),
+          0
+        )
+      );
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -137,27 +144,24 @@ export default function Dashboard() {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Revenu Total</p>
-            <p className="text-2xl font-bold text-blue-600 mt-2">{fmt(totalRevenue)} XAF</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Profit Total</p>
-            <p className="text-2xl font-bold text-green-600 mt-2">{fmt(totalProfit)} XAF</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Articles Vendus</p>
-            <p className="text-2xl font-bold text-purple-600 mt-2">{itemsSold}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Stock Restant</p>
-            <p className="text-2xl font-bold text-orange-600 mt-2">{stockRemaining}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Marge Moyenne</p>
-            <p className="text-2xl font-bold text-indigo-600 mt-2">{profitMargin}%</p>
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Revenu Total', value: fmt(totalRevenue) + ' XAF', color: 'text-blue-600', icon: '💰', ring: 'border-blue-500' },
+            { label: 'Profit Total', value: fmt(totalProfit) + ' XAF', color: 'text-green-600', icon: '📈', ring: 'border-green-500' },
+            { label: 'Articles Vendus', value: String(itemsSold), color: 'text-purple-600', icon: '🛒', ring: 'border-purple-500' },
+            { label: 'Marge Moyenne', value: profitMargin + ' %', color: 'text-indigo-600', icon: '⚖️', ring: 'border-indigo-500' },
+            { label: 'Stock Restant', value: String(stockRemaining), color: 'text-orange-600', icon: '📦', ring: 'border-orange-500' },
+            { label: 'Valeur du Stock', value: fmt(stockValue) + ' XAF', color: 'text-teal-600', icon: '🏦', ring: 'border-teal-500', note: 'au prix d’achat' },
+          ].map((m) => (
+            <div key={m.label} className={'bg-white rounded-lg shadow p-5 border-l-4 ' + m.ring}>
+              <div className="flex items-center justify-between">
+                <p className="text-gray-600 text-sm">{m.label}</p>
+                <span className="text-xl">{m.icon}</span>
+              </div>
+              <p className={'text-2xl font-bold mt-1 ' + m.color}>{m.value}</p>
+              {m.note && <p className="text-xs text-gray-400 mt-0.5">{m.note}</p>}
+            </div>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

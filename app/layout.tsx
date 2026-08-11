@@ -15,7 +15,10 @@ export default function RootLayout({
     <html lang="fr">
       <body className="bg-gray-50 text-gray-900">
         <div className="min-h-screen flex flex-col">
-          {children}
+          <div className="flex-1">{children}</div>
+          <footer className="bg-white border-t py-3 text-center text-xs text-gray-400">
+            INNOVER STORE · Gestion de boutique
+          </footer>
         </div>
       </body>
     </html>
