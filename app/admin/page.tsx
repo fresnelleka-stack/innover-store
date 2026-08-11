@@ -43,6 +43,9 @@ export default function AdminPanel() {
   const [soldImeiPrice, setSoldImeiPrice] = useState<Record<string, number>>({});
   const [imeiPrices, setImeiPrices] = useState<Record<string, string>>({});
   const [sellingImei, setSellingImei] = useState<string | null>(null);
+  // Vente d'accessoires (sans IMEI) : quantité + prix unitaire, par produit.
+  const [accQty, setAccQty] = useState<Record<string, string>>({});
+  const [accPrice, setAccPrice] = useState<Record<string, string>>({});
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
@@ -218,37 +221,20 @@ export default function AdminPanel() {
     }
   };
 
-  const handleSell = async (p: Product) => {
-    if (p.quantity_available <= 0) {
-      alert('Stock épuisé pour ' + p.name);
+  // Vendre des accessoires (sans IMEI) : quantité × prix unitaire, en une fois.
+  const handleSellAccessory = async (p: Product) => {
+    const qty = parseInt(accQty[p.id] || '1', 10);
+    const price = parseFloat(accPrice[p.id] || '');
+    if (!Number.isFinite(qty) || qty < 1) {
+      alert('Quantité invalide.');
       return;
     }
-    // Choix de l'appareil vendu si le produit a plusieurs IMEI.
-    const imeiList = parseImeis(p.imei);
-    let soldImei: string | null = null;
-    if (imeiList.length === 1) {
-      soldImei = imeiList[0];
-    } else if (imeiList.length > 1) {
-      const menu = imeiList.map((im, i) => (i + 1) + ') ' + im).join('\n');
-      const choice = prompt('Quel appareil vends-tu ? Entre le numéro :\n' + menu, '1');
-      if (choice === null) return;
-      const idx = parseInt(choice, 10);
-      if (!Number.isFinite(idx) || idx < 1 || idx > imeiList.length) {
-        alert('Numéro invalide.');
-        return;
-      }
-      soldImei = imeiList[idx - 1];
+    if (qty > p.quantity_available) {
+      alert('Stock insuffisant : il reste ' + p.quantity_available + '.');
+      return;
     }
-
-    // Le vendeur saisit le prix auquel il a réellement vendu.
-    const priceStr = prompt(
-      'À quel prix as-tu vendu « ' + p.name + ' »' + (soldImei ? ' (IMEI ' + soldImei + ')' : '') + ' ? (XAF)',
-      ''
-    );
-    if (priceStr === null) return;
-    const price = parseFloat(priceStr);
     if (!Number.isFinite(price) || price <= 0) {
-      alert('Entrez un prix de vente valide.');
+      alert('Entre le prix de vente.');
       return;
     }
     try {
@@ -257,27 +243,21 @@ export default function AdminPanel() {
 
       const { error: saleError } = await supabase.from('sales').insert([{
         product_id: p.id,
-        imei: soldImei,
-        quantity: 1,
+        imei: null,
+        quantity: qty,
         unit_price_xaf: price,
-        total_price_xaf: price,
-        profit_xaf: price - p.cost_xaf,
+        total_price_xaf: price * qty,
+        profit_xaf: (price - p.cost_xaf) * qty,
         seller_id: null,
         seller_name: 'Vendeur',
       }]);
       if (saleError) throw saleError;
 
-      // Retirer l'IMEI vendu de la liste du produit.
-      const remaining = imeiList.filter((im) => im !== soldImei);
-      const newImei =
-        imeiList.length > 0 ? (remaining.length > 0 ? remaining.join('\n') : null) : p.imei;
-
       const { data, error: updError } = await supabase
         .from('products')
         .update({
-          quantity_available: p.quantity_available - 1,
-          quantity_sold: (p.quantity_sold || 0) + 1,
-          imei: newImei,
+          quantity_available: Math.max(0, p.quantity_available - qty),
+          quantity_sold: (p.quantity_sold || 0) + qty,
         })
         .eq('id', p.id)
         .select();
@@ -285,6 +265,12 @@ export default function AdminPanel() {
       if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
 
       setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+      setAccQty((prev) => ({ ...prev, [p.id]: '1' }));
+      setAccPrice((prev) => {
+        const n = { ...prev };
+        delete n[p.id];
+        return n;
+      });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -572,7 +558,41 @@ export default function AdminPanel() {
                       <td className="px-6 py-3 text-sm text-gray-900 align-top">
                         {(() => {
                           const list = parseImeis(p.imei);
-                          if (list.length === 0) return <span className="text-gray-400">-</span>;
+                          if (list.length === 0) {
+                            // Accessoire (sans IMEI) : vendre une quantité à un prix unitaire.
+                            if (p.quantity_available <= 0) {
+                              return <span className="text-red-600 font-semibold text-xs">Épuisé</span>;
+                            }
+                            return (
+                              <div className="flex items-center gap-1 min-w-[240px]">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max={p.quantity_available}
+                                  title="Quantité vendue"
+                                  value={accQty[p.id] ?? '1'}
+                                  onChange={(e) => setAccQty((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  className="w-14 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 bg-white"
+                                />
+                                <span className="text-gray-400 text-xs">×</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  placeholder="Prix/pièce"
+                                  value={accPrice[p.id] ?? ''}
+                                  onChange={(e) => setAccPrice((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  className="w-20 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 bg-white"
+                                />
+                                <button
+                                  onClick={() => handleSellAccessory(p)}
+                                  disabled={sellingId === p.id || !(parseFloat(accPrice[p.id] || '') > 0)}
+                                  className="bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-2 py-1 rounded disabled:bg-gray-300 disabled:text-gray-500"
+                                >
+                                  {sellingId === p.id ? '...' : 'Vendu'}
+                                </button>
+                              </div>
+                            );
+                          }
                           return (
                             <div className="space-y-1 min-w-[260px]">
                               {list.map((im) =>
@@ -624,15 +644,6 @@ export default function AdminPanel() {
                       </td>
                       <td className="px-6 py-3 text-sm text-right" style={cellStyle(p.id)}>
                         <div className="flex gap-2 justify-end items-center">
-                          {parseImeis(p.imei).length === 0 && (
-                            <button
-                              onClick={() => handleSell(p)}
-                              disabled={sellingId === p.id || p.quantity_available <= 0}
-                              className="bg-green-600 hover:bg-green-700 text-white font-semibold py-1 px-3 rounded disabled:bg-gray-300 disabled:text-gray-500"
-                            >
-                              {sellingId === p.id ? '...' : p.quantity_available <= 0 ? 'Épuisé' : soldIds.includes(p.id) ? '✓ Vendu' : 'Vendre'}
-                            </button>
-                          )}
                           {isSold(p) ? (
                             <span
                               className="text-gray-400 font-semibold"
