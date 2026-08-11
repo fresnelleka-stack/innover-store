@@ -30,11 +30,11 @@ export default function Storefront() {
     load();
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = login(code);
+    const r = await login(code);
     if (!r) {
-      setLoginError("Code d'accès incorrect");
+      setLoginError('Mot de passe incorrect');
       return;
     }
     router.push('/admin');
