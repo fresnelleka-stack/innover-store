@@ -9,6 +9,17 @@ import { getRole, login } from '@/lib/auth';
 // Groupe WhatsApp de la boutique (bouton "Acheter").
 const WHATSAPP = 'https://chat.whatsapp.com/K2UIxb5Cg0QJQuG6QoEx4y?s=hd&p=i&mlu=4&amv=1';
 
+// Vrai logo WhatsApp (SVG), couleur verte officielle (#25D366).
+const WhatsAppIcon = ({ className = 'w-5 h-5' }: { className?: string }) => (
+  <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
+    <path fill="#25D366" d="M16.003 0h-.006C7.17 0 0 7.172 0 16c0 3.5 1.128 6.744 3.046 9.378L1.05 31.3l6.13-1.96A15.9 15.9 0 0016.003 32C24.83 32 32 24.826 32 16S24.83 0 16.003 0z" />
+    <path
+      fill="#fff"
+      d="M25.318 22.594c-.386 1.09-1.918 1.994-3.14 2.258-.836.178-1.928.32-5.604-1.204-4.7-1.948-7.726-6.724-7.962-7.034-.226-.31-1.9-2.53-1.9-4.826 0-2.296 1.166-3.42 1.636-3.9.386-.394.836-.574 1.302-.574.15 0 .286.008.408.014.386.016.58.038.834.646.316.762 1.086 2.844 1.178 3.038.094.194.188.456.056.766-.124.32-.234.442-.44.678-.206.236-.402.416-.606.668-.188.22-.4.456-.164.86.236.396 1.05 1.73 2.25 2.8 1.548 1.38 2.802 1.822 3.246 2.006.33.136.724.104.966-.156.308-.334.688-.888 1.074-1.434.274-.394.62-.442 1.004-.298.39.14 2.466 1.162 2.888 1.372.422.21.702.31.804.486.1.176.1 1.018-.286 2.106z"
+    />
+  </svg>
+);
+
 const catVisual = (cat: string) => {
   if (cat === 'phone') return { emoji: '📱', grad: 'from-red-500 to-red-700' };
   if (cat === 'accessory') return { emoji: '🎧', grad: 'from-rose-500 to-rose-700' };
@@ -113,7 +124,8 @@ export default function Storefront() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 mt-6 bg-white text-red-700 font-bold px-6 py-3 rounded-full shadow-lg hover:bg-red-50 transition"
           >
-            💬 Rejoindre notre WhatsApp
+            <WhatsAppIcon className="w-6 h-6" />
+            Rejoindre notre WhatsApp
           </a>
         </div>
       </section>
@@ -186,8 +198,9 @@ export default function Storefront() {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2 rounded-lg transition"
+                        className="shrink-0 inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg transition"
                       >
+                        <WhatsAppIcon className="w-4 h-4" />
                         Acheter
                       </a>
                     </div>
@@ -260,8 +273,9 @@ export default function Storefront() {
                     href={WHATSAPP}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg"
+                    className="shrink-0 inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg"
                   >
+                    <WhatsAppIcon className="w-5 h-5" />
                     Acheter
                   </a>
                 </div>
