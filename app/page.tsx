@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getRole } from '@/lib/auth';
+import { getRole, login } from '@/lib/auth';
 
 // Groupe WhatsApp de la boutique (bouton "Acheter").
 const WHATSAPP = 'https://chat.whatsapp.com/K2UIxb5Cg0QJQuG6QoEx4y?s=hd&p=i&mlu=4&amv=1';
@@ -15,15 +16,29 @@ const catVisual = (cat: string) => {
 };
 
 export default function Storefront() {
+  const router = useRouter();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isStaff, setIsStaff] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [code, setCode] = useState('');
+  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
     setIsStaff(!!getRole());
     load();
   }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const r = login(code);
+    if (!r) {
+      setLoginError("Code d'accès incorrect");
+      return;
+    }
+    router.push('/admin');
+  };
 
   const load = async () => {
     try {
@@ -52,12 +67,22 @@ export default function Storefront() {
               <span className="text-gray-900">INNOVER</span> <span className="text-red-600">STORE</span>
             </span>
           </div>
-          <Link
-            href={isStaff ? '/vitrine' : '/login'}
-            className="text-sm font-semibold text-gray-500 hover:text-gray-800"
-          >
-            {isStaff ? '🔧 Espace gestion' : 'Connexion'}
-          </Link>
+          {isStaff ? (
+            <Link href="/vitrine" className="text-sm font-semibold text-gray-500 hover:text-gray-800">
+              🔧 Espace gestion
+            </Link>
+          ) : (
+            <button
+              onClick={() => {
+                setLoginError('');
+                setCode('');
+                setShowLogin(true);
+              }}
+              className="text-sm font-semibold text-gray-500 hover:text-gray-800"
+            >
+              Connexion
+            </button>
+          )}
         </div>
       </header>
 
@@ -134,6 +159,49 @@ export default function Storefront() {
           </div>
         )}
       </main>
+
+      {/* Popup de connexion (staff) */}
+      {showLogin && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4"
+          onClick={() => setShowLogin(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-xs p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">Connexion</h2>
+              <button
+                onClick={() => setShowLogin(false)}
+                className="text-gray-400 hover:text-gray-700 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleLogin}>
+              <input
+                type="password"
+                autoFocus
+                placeholder="Code d'accès"
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value);
+                  if (loginError) setLoginError('');
+                }}
+                className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+              {loginError && <p className="text-red-600 text-sm mt-2">{loginError}</p>}
+              <button
+                type="submit"
+                className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg"
+              >
+                Se connecter
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

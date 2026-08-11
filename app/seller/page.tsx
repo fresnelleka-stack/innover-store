@@ -17,7 +17,7 @@ export default function ProduitVenduPage() {
   useEffect(() => {
     const r = getRole();
     if (!r) {
-      router.replace('/login');
+      router.replace('/');
       return;
     }
     setRole(r);

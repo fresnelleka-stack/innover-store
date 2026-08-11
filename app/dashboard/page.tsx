@@ -21,7 +21,7 @@ export default function Dashboard() {
   useEffect(() => {
     const r = getRole();
     if (!r) {
-      router.replace('/login');
+      router.replace('/');
       return;
     }
     setRole(r);

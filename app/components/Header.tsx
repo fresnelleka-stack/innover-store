@@ -10,7 +10,7 @@ export default function Header({ role }: { role: Role }) {
 
   const doLogout = () => {
     logout();
-    router.replace('/login');
+    router.replace('/');
   };
 
   const linkClass = (href: string) =>

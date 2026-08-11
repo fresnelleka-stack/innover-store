@@ -67,7 +67,7 @@ export default function VitrineAdmin() {
   useEffect(() => {
     const r = getRole();
     if (!r) {
-      router.replace('/login');
+      router.replace('/');
       return;
     }
     setRole(r);
