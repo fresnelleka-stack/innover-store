@@ -30,11 +30,11 @@ export default function LoginPage() {
       <div className="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-icon.svg" alt="INNOVER STORE" className="h-20 w-20 mx-auto mb-3" />
-          <h1 className="text-3xl font-bold mb-2">
-            <span className="text-gray-900">INNOVER</span>{' '}
-            <span className="text-red-600">STORE</span>
-          </h1>
+          <img
+            src="/logo.jpg"
+            alt="INNOVER STORE"
+            className="w-56 h-56 object-cover rounded-2xl mx-auto mb-4 shadow-lg"
+          />
           <p className="text-gray-600">Connexion</p>
         </div>
 
