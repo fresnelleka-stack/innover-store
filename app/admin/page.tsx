@@ -46,6 +46,10 @@ export default function AdminPanel() {
   // Vente d'accessoires (sans IMEI) : quantité + prix unitaire, par produit.
   const [accQty, setAccQty] = useState<Record<string, string>>({});
   const [accPrice, setAccPrice] = useState<Record<string, string>>({});
+  const [lastSale, setLastSale] = useState<
+    | { name: string; imei: string | null; qty: number; unitPrice: number; total: number; date: string }
+    | null
+  >(null);
   const [imeiWarning, setImeiWarning] = useState('');
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
@@ -265,6 +269,14 @@ export default function AdminPanel() {
       if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
 
       setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+      setLastSale({
+        name: p.name,
+        imei: null,
+        qty,
+        unitPrice: price,
+        total: price * qty,
+        date: new Date().toLocaleString('fr-CM'),
+      });
       setAccQty((prev) => ({ ...prev, [p.id]: '1' }));
       setAccPrice((prev) => {
         const n = { ...prev };
@@ -276,6 +288,43 @@ export default function AdminPanel() {
     } finally {
       setSellingId(null);
     }
+  };
+
+  // Reçu imprimable (ouvre une petite fenêtre et lance l'impression).
+  const printReceipt = (info: {
+    name: string;
+    imei: string | null;
+    qty: number;
+    unitPrice: number;
+    total: number;
+    date: string;
+  }) => {
+    const w = window.open('', '_blank', 'width=360,height=640');
+    if (!w) {
+      alert('Autorise les pop-ups pour imprimer le reçu.');
+      return;
+    }
+    const html =
+      '<html><head><meta charset="utf-8"><title>Reçu INNOVER STORE</title><style>' +
+      '*{font-family:Arial,sans-serif}body{padding:16px;color:#111}' +
+      'h1{font-size:20px;margin:0 0 2px;text-align:center;color:#c10812}' +
+      '.sub{text-align:center;color:#666;font-size:12px}' +
+      'hr{border:none;border-top:1px dashed #999;margin:10px 0}' +
+      '.row{display:flex;justify-content:space-between;font-size:13px;margin:4px 0}' +
+      '.total{font-size:16px;font-weight:bold;margin-top:8px}' +
+      '.foot{text-align:center;color:#666;font-size:12px;margin-top:14px}' +
+      '</style></head><body>' +
+      '<h1>INNOVER STORE</h1><div class="sub">Reçu de vente</div>' +
+      '<div class="sub">' + info.date + '</div><hr/>' +
+      '<div class="row"><span>Produit</span><span>' + info.name + '</span></div>' +
+      (info.imei ? '<div class="row"><span>IMEI</span><span>' + info.imei + '</span></div>' : '') +
+      '<div class="row"><span>Quantité</span><span>' + info.qty + '</span></div>' +
+      '<div class="row"><span>Prix unitaire</span><span>' + info.unitPrice.toLocaleString('fr-CM') + ' XAF</span></div>' +
+      '<hr/><div class="row total"><span>TOTAL</span><span>' + info.total.toLocaleString('fr-CM') + ' XAF</span></div>' +
+      '<div class="foot">Merci pour votre achat !</div>' +
+      '<script>window.onload=function(){window.print()}</script></body></html>';
+    w.document.write(html);
+    w.document.close();
   };
 
   // Vendre un IMEI précis. Le prix vient du champ saisi à côté de l'IMEI.
@@ -323,6 +372,14 @@ export default function AdminPanel() {
         return next;
       });
       setSoldIds((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+      setLastSale({
+        name: p.name,
+        imei,
+        qty: 1,
+        unitPrice: price,
+        total: price,
+        date: new Date().toLocaleString('fr-CM'),
+      });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -417,6 +474,30 @@ export default function AdminPanel() {
         {error && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded">
             <p className="text-red-800">{error}</p>
+          </div>
+        )}
+
+        {lastSale && (
+          <div className="mb-6 bg-green-50 border-l-4 border-green-500 p-4 rounded flex flex-wrap items-center gap-3">
+            <p className="text-green-800 font-semibold flex-1 min-w-[200px]">
+              ✓ Vente enregistrée : {lastSale.name}
+              {lastSale.imei ? ' (IMEI ' + lastSale.imei + ')' : ''} — {lastSale.qty} ×{' '}
+              {lastSale.unitPrice.toLocaleString('fr-CM')} ={' '}
+              {lastSale.total.toLocaleString('fr-CM')} XAF
+            </p>
+            <button
+              onClick={() => printReceipt(lastSale)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded"
+            >
+              🖨️ Imprimer le reçu
+            </button>
+            <button
+              onClick={() => setLastSale(null)}
+              className="text-gray-500 hover:text-gray-700 font-semibold px-2"
+              title="Fermer"
+            >
+              ✕
+            </button>
           </div>
         )}
 

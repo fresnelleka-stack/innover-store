@@ -55,6 +55,29 @@ export default function ProduitVenduPage() {
   const totalRevenue = filtered.reduce((sum, s) => sum + Number(s.total_price_xaf || 0), 0);
   const totalProfit = filtered.reduce((sum, s) => sum + Number(s.profit_xaf || 0), 0);
 
+  // Export Excel (CSV, séparateur ; + BOM pour les accents — s'ouvre dans Excel).
+  const exportCSV = () => {
+    const header = ['Date', 'Produit', 'IMEI', 'Quantite', 'Prix unitaire (XAF)', 'Total (XAF)', 'Profit (XAF)'];
+    const lines = filtered.map((s) => [
+      new Date(s.sold_at).toLocaleString('fr-CM'),
+      s.products?.name || 'Produit supprimé',
+      s.imei ? String(s.imei) : '',
+      String(s.quantity || 1),
+      String(s.unit_price_xaf ?? ''),
+      String(s.total_price_xaf ?? ''),
+      String(s.profit_xaf ?? ''),
+    ]);
+    const esc = (c: string) => '"' + String(c).replace(/"/g, '""') + '"';
+    const csv = '﻿' + [header, ...lines].map((r) => r.map(esc).join(';')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ventes-innover-store.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const fmt = (n: number) => Number(n).toLocaleString('fr-CM');
   const timeOf = (iso: string) => {
     const d = new Date(iso);
@@ -99,14 +122,22 @@ export default function ProduitVenduPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <div className="bg-white rounded-lg shadow p-6 mb-6 flex flex-col sm:flex-row gap-3">
           <input
             type="text"
             placeholder="Chercher un produit vendu (nom ou IMEI)..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full border-2 border-gray-300 rounded px-4 py-3 text-lg text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            className="flex-1 border-2 border-gray-300 rounded px-4 py-3 text-lg text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
           />
+          <button
+            onClick={exportCSV}
+            disabled={filtered.length === 0}
+            className="bg-green-700 hover:bg-green-800 disabled:bg-gray-300 text-white font-semibold px-5 py-3 rounded whitespace-nowrap"
+            title="Télécharger les ventes au format Excel"
+          >
+            📊 Exporter (Excel)
+          </button>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">

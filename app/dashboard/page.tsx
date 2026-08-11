@@ -81,6 +81,11 @@ export default function Dashboard() {
   const itemsSold = sales.reduce((s, x) => s + Number(x.quantity || 0), 0);
   const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0';
 
+  // Alerte stock : produits épuisés (0) ou presque (<= 3), du plus critique au moins.
+  const lowStock = productStocks
+    .filter((p: any) => Number(p.quantity_available || 0) <= 3)
+    .sort((a: any, b: any) => Number(a.quantity_available || 0) - Number(b.quantity_available || 0));
+
   const byProduct: Record<string, { name: string; sold: number; revenue: number; profit: number }> = {};
   for (const s of sales) {
     const name = s.products?.name || 'Produit supprimé';
@@ -163,6 +168,31 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        {/* Alerte stock bas / épuisé */}
+        {!loading && lowStock.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6 mb-8 border-l-4 border-red-500">
+            <h2 className="text-xl font-bold mb-3 text-gray-900">
+              ⚠️ Alertes stock <span className="text-red-600">({lowStock.length})</span>
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {lowStock.map((p: any) => {
+                const q = Number(p.quantity_available || 0);
+                return (
+                  <span
+                    key={p.id}
+                    className={
+                      'px-3 py-1 rounded-full text-sm font-semibold ' +
+                      (q === 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700')
+                    }
+                  >
+                    {p.name} : {q === 0 ? 'épuisé' : q + ' restant' + (q > 1 ? 's' : '')}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Top Products */}
