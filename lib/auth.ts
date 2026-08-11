@@ -13,8 +13,10 @@ export function getRole(): Role | null {
 
 // Vérifie le code saisi et enregistre le rôle. Renvoie le rôle ou null si code invalide.
 export function login(code: string): Role | null {
-  const adminCode = process.env.NEXT_PUBLIC_ADMIN_CODE;
-  const vendeurCode = process.env.NEXT_PUBLIC_VENDEUR_CODE;
+  // Valeurs de repli pour que la connexion marche même si Netlify n'a pas les variables.
+  // Ces codes sont NEXT_PUBLIC_* (déjà visibles côté navigateur), donc pas de secret réel ici.
+  const adminCode = process.env.NEXT_PUBLIC_ADMIN_CODE || 'Admin2026';
+  const vendeurCode = process.env.NEXT_PUBLIC_VENDEUR_CODE || 'Vente2026';
   const clean = code.trim();
   if (adminCode && clean === adminCode) {
     window.localStorage.setItem(KEY, 'admin');
