@@ -118,10 +118,13 @@ export default function AdminPanel() {
   };
 
   const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Supprimer ce produit definitivement ?')) return;
+    if (!confirm('Supprimer ce produit et tout son historique de ventes ? (retiré partout, y compris le tableau de bord)')) return;
     try {
       setError('');
       setDeletingId(id);
+      // Supprimer d'abord les ventes liées pour qu'il disparaisse aussi du tableau de bord
+      const { error: salesError } = await supabase.from('sales').delete().eq('product_id', id);
+      if (salesError) throw salesError;
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
       setProducts(products.filter((p) => p.id !== id));
