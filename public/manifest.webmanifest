@@ -1,0 +1,16 @@
+{
+  "name": "INNOVER STORE",
+  "short_name": "INNOVER",
+  "description": "Téléphones, accessoires et high-tech au meilleur prix.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#c10812",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    { "src": "/logo.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any" },
+    { "src": "/logo.jpg", "sizes": "1024x1024", "type": "image/jpeg", "purpose": "any maskable" }
+  ]
+}

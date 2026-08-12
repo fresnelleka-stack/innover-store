@@ -51,6 +51,39 @@ export default function Storefront() {
   const [code, setCode] = useState('');
   const [loginError, setLoginError] = useState('');
   const [zoom, setZoom] = useState<any>(null);
+  const [installEvt, setInstallEvt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [standalone, setStandalone] = useState(true);
+  const [iosHint, setIosHint] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setInstallEvt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    const ua = navigator.userAgent || '';
+    setIsIOS(/iphone|ipad|ipod/i.test(ua));
+    const sa =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as any).standalone === true;
+    setStandalone(sa);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const doInstall = async () => {
+    if (installEvt) {
+      installEvt.prompt();
+      try {
+        await installEvt.userChoice;
+      } catch {
+        /* ignore */
+      }
+      setInstallEvt(null);
+    } else {
+      setIosHint(true);
+    }
+  };
 
   useEffect(() => {
     setIsStaff(!!getRole());
@@ -127,6 +160,16 @@ export default function Storefront() {
             <WhatsAppIcon className="w-6 h-6" />
             Rejoindre notre WhatsApp
           </a>
+          {!standalone && (
+            <div>
+              <button
+                onClick={doInstall}
+                className="inline-flex items-center gap-2 mt-3 bg-red-800/60 hover:bg-red-800 text-white font-semibold px-5 py-2.5 rounded-full border border-white/40 transition"
+              >
+                📲 Installer l&apos;application
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -324,6 +367,45 @@ export default function Storefront() {
                 Se connecter
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Instructions d'installation (iPhone / navigateurs sans invite auto) */}
+      {iosHint && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4"
+          onClick={() => setIosHint(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900">📲 Installer l&apos;application</h2>
+              <button onClick={() => setIosHint(false)} className="text-gray-400 hover:text-gray-700 text-xl">
+                ✕
+              </button>
+            </div>
+            {isIOS ? (
+              <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+                <li>Appuie sur le bouton <b>Partager</b> (le carré avec une flèche ↑) en bas de Safari.</li>
+                <li>Fais défiler et choisis <b>« Sur l&apos;écran d&apos;accueil »</b>.</li>
+                <li>Appuie sur <b>« Ajouter »</b> en haut à droite.</li>
+              </ol>
+            ) : (
+              <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+                <li>Ouvre le menu <b>⋮</b> (en haut à droite du navigateur).</li>
+                <li>Choisis <b>« Installer l&apos;application »</b> ou <b>« Ajouter à l&apos;écran d&apos;accueil »</b>.</li>
+                <li>Confirme — l&apos;icône INNOVER STORE apparaîtra sur ton écran.</li>
+              </ol>
+            )}
+            <button
+              onClick={() => setIosHint(false)}
+              className="w-full mt-5 bg-blue-900 hover:bg-blue-800 text-white font-bold py-2.5 rounded-lg"
+            >
+              J&apos;ai compris
+            </button>
           </div>
         </div>
       )}
