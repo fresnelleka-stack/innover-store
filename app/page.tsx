@@ -121,6 +121,7 @@ export default function Storefront() {
   const [code, setCode] = useState('');
   const [loginError, setLoginError] = useState('');
   const [zoom, setZoom] = useState<any>(null);
+  const [visibleCount, setVisibleCount] = useState(24);
   const [installEvt, setInstallEvt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [standalone, setStandalone] = useState(true);
@@ -301,7 +302,7 @@ export default function Storefront() {
           <p className="text-center text-gray-500 py-16">{search ? t.noneFound : t.none}</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {filtered.map((p) => {
+            {filtered.slice(0, visibleCount).map((p) => {
               const v = catVisual(p.category);
               const imgs = getImages(p.image_url);
               return (
@@ -315,7 +316,7 @@ export default function Storefront() {
                     {imgs.length > 0 ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
+                        <img src={imgs[0]} alt={p.name} loading="lazy" className="w-full h-full object-cover" />
                         <span className="absolute bottom-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded">
                           {imgs.length > 1 ? '📷 ' + imgs.length : '🔍'}
                         </span>
@@ -362,6 +363,17 @@ export default function Storefront() {
             })}
           </div>
         )}
+
+        {!loading && filtered.length > visibleCount && (
+          <div className="text-center mt-6">
+            <button
+              onClick={() => setVisibleCount((c) => c + 24)}
+              className="bg-blue-900 hover:bg-blue-800 text-white font-bold px-6 py-3 rounded-full"
+            >
+              {lang === 'en' ? 'See more' : 'Voir plus'} ({filtered.length - visibleCount})
+            </button>
+          </div>
+        )}
       </main>
 
       {/* Galerie produit (clients) : plusieurs photos, on fait glisser */}
@@ -391,6 +403,7 @@ export default function Storefront() {
                           key={i}
                           src={src}
                           alt={zoom.name + ' ' + (i + 1)}
+                          loading="lazy"
                           className="snap-center shrink-0 w-full h-full object-contain rounded-lg"
                         />
                       ))}

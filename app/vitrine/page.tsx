@@ -12,8 +12,8 @@ const catVisual = (cat: string) => {
   return { emoji: '📦', grad: 'from-slate-500 to-slate-700' };
 };
 
-// Compresse une photo (max 700px, JPEG ~72%) → data URL léger.
-const compressImage = (file: File): Promise<string> =>
+// Compresse une photo (max 900px, JPEG ~75%) → Blob.
+const compressToBlob = (file: File): Promise<Blob> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('lecture'));
@@ -21,7 +21,7 @@ const compressImage = (file: File): Promise<string> =>
       const img = new Image();
       img.onerror = () => reject(new Error('image'));
       img.onload = () => {
-        const max = 700;
+        const max = 900;
         let { width, height } = img;
         if (width > max || height > max) {
           if (width >= height) {
@@ -38,12 +38,23 @@ const compressImage = (file: File): Promise<string> =>
         const ctx = canvas.getContext('2d');
         if (!ctx) return reject(new Error('canvas'));
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.75);
       };
       img.src = reader.result as string;
     };
     reader.readAsDataURL(file);
   });
+
+// Compresse + envoie la photo dans Supabase Storage → renvoie l'URL publique (légère).
+const uploadPhoto = async (file: File): Promise<string> => {
+  const blob = await compressToBlob(file);
+  const path = Date.now() + '-' + Math.random().toString(36).slice(2, 9) + '.jpg';
+  const { error } = await supabase.storage
+    .from('photos')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+  if (error) throw error;
+  return supabase.storage.from('photos').getPublicUrl(path).data.publicUrl;
+};
 
 // image_url = 1 photo (ancien) ou tableau JSON de photos.
 const getImages = (image_url: string | null | undefined): string[] => {
@@ -77,6 +88,7 @@ export default function VitrineAdmin() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<CatForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -228,7 +240,7 @@ export default function VitrineAdmin() {
                   {getImages(p.image_url).length > 0 ? (
                     <div className="relative">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={getImages(p.image_url)[0]} alt={p.name} className="h-36 w-full object-cover" />
+                      <img src={getImages(p.image_url)[0]} alt={p.name} loading="lazy" className="h-36 w-full object-cover" />
                       {getImages(p.image_url).length > 1 && (
                         <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                           📷 {getImages(p.image_url).length}
@@ -280,18 +292,21 @@ export default function VitrineAdmin() {
                   multiple
                   onChange={async (e) => {
                     const files = Array.from(e.target.files || []);
+                    e.target.value = '';
+                    setUploading(true);
                     for (const f of files) {
                       try {
-                        const d = await compressImage(f);
-                        setForm((prev) => (prev ? { ...prev, images: [...prev.images, d] } : prev));
-                      } catch {
-                        /* ignore une photo invalide */
+                        const url = await uploadPhoto(f);
+                        setForm((prev) => (prev ? { ...prev, images: [...prev.images, url] } : prev));
+                      } catch (err: any) {
+                        setError('Échec envoi photo : ' + (err?.message || ''));
                       }
                     }
-                    e.target.value = '';
+                    setUploading(false);
                   }}
                   className="text-sm text-gray-700"
                 />
+                {uploading && <p className="text-xs text-blue-600 mt-1">⏳ Envoi des photos en cours...</p>}
                 {form.images.length > 0 && (
                   <div className="flex gap-2 flex-wrap mt-2">
                     {form.images.map((src, i) => (
@@ -350,7 +365,7 @@ export default function VitrineAdmin() {
             <div className="flex gap-3 px-5 py-3 border-t">
               <button
                 onClick={save}
-                disabled={saving}
+                disabled={saving || uploading}
                 className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white font-bold py-2 rounded"
               >
                 {saving ? 'Enregistrement...' : form.id ? 'Enregistrer' : 'Ajouter'}
