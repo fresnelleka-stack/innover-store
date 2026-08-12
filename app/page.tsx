@@ -105,9 +105,9 @@ export default function Storefront() {
                 setCode('');
                 setShowLogin(true);
               }}
-              className="text-sm font-semibold text-gray-500 hover:text-gray-800"
+              className="text-sm font-bold text-gray-700 hover:text-gray-900"
             >
-              Connexion
+              Espace employé
             </button>
           )}
         </div>
@@ -296,7 +296,7 @@ export default function Storefront() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Connexion</h2>
+              <h2 className="text-lg font-bold text-gray-900">Espace employé</h2>
               <button
                 onClick={() => setShowLogin(false)}
                 className="text-gray-400 hover:text-gray-700 text-xl"
