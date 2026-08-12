@@ -26,6 +26,76 @@ const catVisual = (cat: string) => {
   return { emoji: '📦', grad: 'from-slate-500 to-slate-700' };
 };
 
+type Lang = 'fr' | 'en';
+const T = {
+  fr: {
+    staff: 'Espace employé',
+    manage: '🔧 Espace gestion',
+    welcome: 'Bienvenue chez INNOVER STORE',
+    tagline:
+      '⚠️ Évitez les arnaques : nous sommes une entreprise sérieuse. Rejoignez notre groupe WhatsApp pour discuter directement avec nos administrateurs au Cameroun et en Chine. Nous vendons en gros et en détail, avec livraison dans toutes les villes du Cameroun.',
+    joinWa: 'Rejoindre notre WhatsApp',
+    install: "Installer l'application",
+    search: '🔍 Chercher un produit...',
+    loading: 'Chargement...',
+    noneFound: 'Aucun produit trouvé.',
+    none: 'Aucun produit pour le moment.',
+    available: 'DISPO',
+    price: 'Prix',
+    buy: 'Acheter',
+    consult: 'Nous consulter',
+    swipe: (n: number) => `← Fais glisser pour voir les ${n} photos →`,
+    codePlaceholder: "Code d'accès",
+    connect: 'Se connecter',
+    wrong: 'Mot de passe incorrect',
+    installTitle: "Installer l'application",
+    ios: [
+      'Appuie sur le bouton Partager (le carré avec une flèche ↑) en bas de Safari.',
+      "Fais défiler et choisis « Sur l'écran d'accueil ».",
+      'Appuie sur « Ajouter » en haut à droite.',
+    ],
+    android: [
+      'Ouvre le menu ⋮ (en haut à droite du navigateur).',
+      "Choisis « Installer l'application » ou « Ajouter à l'écran d'accueil ».",
+      "Confirme — l'icône INNOVER STORE apparaîtra sur ton écran.",
+    ],
+    ok: "J'ai compris",
+  },
+  en: {
+    staff: 'Staff area',
+    manage: '🔧 Management',
+    welcome: 'Welcome to INNOVER STORE',
+    tagline:
+      '⚠️ Avoid scams: we are a serious company. Join our WhatsApp group to chat directly with our administrators in Cameroon and China. We sell wholesale and retail, with delivery to all cities in Cameroon.',
+    joinWa: 'Join our WhatsApp',
+    install: 'Install the app',
+    search: '🔍 Search a product...',
+    loading: 'Loading...',
+    noneFound: 'No product found.',
+    none: 'No products yet.',
+    available: 'IN STOCK',
+    price: 'Price',
+    buy: 'Buy',
+    consult: 'Contact us',
+    swipe: (n: number) => `← Swipe to see the ${n} photos →`,
+    codePlaceholder: 'Access code',
+    connect: 'Sign in',
+    wrong: 'Wrong password',
+    installTitle: 'Install the app',
+    ios: [
+      'Tap the Share button (the square with an up arrow ↑) at the bottom of Safari.',
+      'Scroll and choose "Add to Home Screen".',
+      'Tap "Add" in the top right.',
+    ],
+    android: [
+      'Open the ⋮ menu (top right of the browser).',
+      'Choose "Install app" or "Add to Home screen".',
+      'Confirm — the INNOVER STORE icon will appear on your screen.',
+    ],
+    ok: 'Got it',
+  },
+} as const;
+
 // image_url peut contenir 1 photo (ancien format) ou un tableau JSON de photos.
 const getImages = (image_url: string | null | undefined): string[] => {
   if (!image_url) return [];
@@ -55,8 +125,12 @@ export default function Storefront() {
   const [isIOS, setIsIOS] = useState(false);
   const [standalone, setStandalone] = useState(true);
   const [iosHint, setIosHint] = useState(false);
+  const [lang, setLang] = useState<Lang>('fr');
+  const t = T[lang];
 
   useEffect(() => {
+    const saved = localStorage.getItem('innover_lang');
+    if (saved === 'en' || saved === 'fr') setLang(saved);
     const handler = (e: any) => {
       e.preventDefault();
       setInstallEvt(e);
@@ -94,7 +168,7 @@ export default function Storefront() {
     e.preventDefault();
     const r = await login(code);
     if (!r) {
-      setLoginError('Mot de passe incorrect');
+      setLoginError(t.wrong);
       return;
     }
     router.push('/admin');
@@ -127,34 +201,47 @@ export default function Storefront() {
               <span className="text-gray-900">INNOVER</span> <span className="text-red-600">STORE</span>
             </span>
           </div>
-          {isStaff ? (
-            <Link href="/vitrine" className="text-sm font-semibold text-gray-500 hover:text-gray-800">
-              🔧 Espace gestion
-            </Link>
-          ) : (
-            <button
-              onClick={() => {
-                setLoginError('');
-                setCode('');
-                setShowLogin(true);
-              }}
-              className="text-sm font-bold text-gray-700 hover:text-gray-900"
-            >
-              Espace employé
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Sélecteur de langue FR / EN */}
+            <div className="flex items-center rounded-full border border-gray-300 overflow-hidden text-xs font-bold">
+              {(['fr', 'en'] as Lang[]).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => {
+                    setLang(l);
+                    localStorage.setItem('innover_lang', l);
+                  }}
+                  className={'px-2.5 py-1 ' + (lang === l ? 'bg-blue-900 text-white' : 'text-gray-600')}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {isStaff ? (
+              <Link href="/vitrine" className="text-sm font-semibold text-gray-500 hover:text-gray-800">
+                {t.manage}
+              </Link>
+            ) : (
+              <button
+                onClick={() => {
+                  setLoginError('');
+                  setCode('');
+                  setShowLogin(true);
+                }}
+                className="text-sm font-bold text-gray-700 hover:text-gray-900"
+              >
+                {t.staff}
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-red-600 to-red-800 text-white">
         <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14 text-center">
-          <h1 className="text-3xl sm:text-4xl font-extrabold">Bienvenue chez INNOVER STORE</h1>
-          <p className="mt-3 text-white font-bold max-w-2xl mx-auto leading-relaxed">
-            ⚠️ Évitez les arnaques : nous sommes une entreprise sérieuse. Rejoignez notre groupe
-            WhatsApp pour discuter directement avec nos administrateurs au Cameroun et en Chine. Nous
-            vendons en gros et en détail, avec livraison dans toutes les villes du Cameroun.
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-extrabold">{t.welcome}</h1>
+          <p className="mt-3 text-white font-bold max-w-2xl mx-auto leading-relaxed">{t.tagline}</p>
           <a
             href={WHATSAPP}
             target="_blank"
@@ -162,7 +249,7 @@ export default function Storefront() {
             className="inline-flex items-center gap-2 mt-6 bg-white text-red-700 font-bold px-6 py-3 rounded-full shadow-lg hover:bg-red-50 transition"
           >
             <WhatsAppIcon className="w-6 h-6" />
-            Rejoindre notre WhatsApp
+            {t.joinWa}
           </a>
           {!standalone && (
             <div>
@@ -170,7 +257,7 @@ export default function Storefront() {
                 onClick={doInstall}
                 className="inline-flex items-center gap-2 mt-3 bg-red-800/60 hover:bg-red-800 text-white font-semibold px-5 py-2.5 rounded-full border border-white/40 transition"
               >
-                📲 Installer l&apos;application
+                📲 {t.install}
               </button>
             </div>
           )}
@@ -181,7 +268,7 @@ export default function Storefront() {
         <div className="mb-6">
           <input
             type="text"
-            placeholder="🔍 Chercher un produit..."
+            placeholder={t.search}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full max-w-md border-2 border-gray-300 rounded-full px-5 py-3 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-red-500"
@@ -189,11 +276,9 @@ export default function Storefront() {
         </div>
 
         {loading ? (
-          <p className="text-center text-gray-500 py-16">Chargement...</p>
+          <p className="text-center text-gray-500 py-16">{t.loading}</p>
         ) : filtered.length === 0 ? (
-          <p className="text-center text-gray-500 py-16">
-            {search ? 'Aucun produit trouvé.' : 'Aucun produit pour le moment.'}
-          </p>
+          <p className="text-center text-gray-500 py-16">{search ? t.noneFound : t.none}</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {filtered.map((p) => {
@@ -226,7 +311,7 @@ export default function Storefront() {
                   <div className="flex-1 min-w-0 flex flex-col">
                     <div className="flex items-start gap-1.5">
                       <span className="mt-0.5 shrink-0 bg-green-100 text-green-700 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                        DISPO
+                        {t.available}
                       </span>
                       <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2">{p.name}</h3>
                     </div>
@@ -235,9 +320,9 @@ export default function Storefront() {
                     )}
                     <div className="mt-auto pt-2 flex items-end justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[11px] text-red-500 font-semibold leading-none">Prix</div>
+                        <div className="text-[11px] text-red-500 font-semibold leading-none">{t.price}</div>
                         <div className="text-red-600 font-extrabold text-lg leading-tight truncate">
-                          {p.price_fcfa > 0 ? fmt(p.price_fcfa) + ' FCFA' : 'Nous consulter'}
+                          {p.price_fcfa > 0 ? fmt(p.price_fcfa) + ' FCFA' : t.consult}
                         </div>
                       </div>
                       <a
@@ -248,7 +333,7 @@ export default function Storefront() {
                         className="shrink-0 inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2 rounded-lg transition"
                       >
                         <WhatsAppIcon className="w-4 h-4" />
-                        Acheter
+                        {t.buy}
                       </a>
                     </div>
                   </div>
@@ -298,9 +383,7 @@ export default function Storefront() {
                 </div>
 
                 {imgs.length > 1 && (
-                  <p className="text-center text-white/70 text-xs mt-2">
-                    ← Fais glisser pour voir les {imgs.length} photos →
-                  </p>
+                  <p className="text-center text-white/70 text-xs mt-2">{t.swipe(imgs.length)}</p>
                 )}
 
                 <div
@@ -313,7 +396,7 @@ export default function Storefront() {
                       <p className="text-xs text-gray-500 mt-0.5">{zoom.description}</p>
                     )}
                     <p className="text-red-600 font-extrabold text-xl mt-1">
-                      {zoom.price_fcfa > 0 ? fmt(zoom.price_fcfa) + ' FCFA' : 'Nous consulter'}
+                      {zoom.price_fcfa > 0 ? fmt(zoom.price_fcfa) + ' FCFA' : t.consult}
                     </p>
                   </div>
                   <a
@@ -323,7 +406,7 @@ export default function Storefront() {
                     className="shrink-0 inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg"
                   >
                     <WhatsAppIcon className="w-5 h-5" />
-                    Acheter
+                    {t.buy}
                   </a>
                 </div>
               </>
@@ -343,7 +426,7 @@ export default function Storefront() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900">Espace employé</h2>
+              <h2 className="text-lg font-bold text-gray-900">{t.staff}</h2>
               <button
                 onClick={() => setShowLogin(false)}
                 className="text-gray-400 hover:text-gray-700 text-xl"
@@ -355,7 +438,7 @@ export default function Storefront() {
               <input
                 type="password"
                 autoFocus
-                placeholder="Code d'accès"
+                placeholder={t.codePlaceholder}
                 value={code}
                 onChange={(e) => {
                   setCode(e.target.value);
@@ -368,7 +451,7 @@ export default function Storefront() {
                 type="submit"
                 className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg"
               >
-                Se connecter
+                {t.connect}
               </button>
             </form>
           </div>
@@ -386,29 +469,21 @@ export default function Storefront() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">📲 Installer l&apos;application</h2>
+              <h2 className="text-lg font-bold text-gray-900">📲 {t.installTitle}</h2>
               <button onClick={() => setIosHint(false)} className="text-gray-400 hover:text-gray-700 text-xl">
                 ✕
               </button>
             </div>
-            {isIOS ? (
-              <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
-                <li>Appuie sur le bouton <b>Partager</b> (le carré avec une flèche ↑) en bas de Safari.</li>
-                <li>Fais défiler et choisis <b>« Sur l&apos;écran d&apos;accueil »</b>.</li>
-                <li>Appuie sur <b>« Ajouter »</b> en haut à droite.</li>
-              </ol>
-            ) : (
-              <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
-                <li>Ouvre le menu <b>⋮</b> (en haut à droite du navigateur).</li>
-                <li>Choisis <b>« Installer l&apos;application »</b> ou <b>« Ajouter à l&apos;écran d&apos;accueil »</b>.</li>
-                <li>Confirme — l&apos;icône INNOVER STORE apparaîtra sur ton écran.</li>
-              </ol>
-            )}
+            <ol className="text-sm text-gray-700 space-y-2 list-decimal list-inside">
+              {(isIOS ? t.ios : t.android).map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
             <button
               onClick={() => setIosHint(false)}
               className="w-full mt-5 bg-blue-900 hover:bg-blue-800 text-white font-bold py-2.5 rounded-lg"
             >
-              J&apos;ai compris
+              {t.ok}
             </button>
           </div>
         </div>
