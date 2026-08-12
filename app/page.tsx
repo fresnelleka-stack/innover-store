@@ -162,6 +162,26 @@ export default function Storefront() {
   useEffect(() => {
     setIsStaff(!!getRole());
     load();
+
+    // Rafraîchissement automatique du catalogue :
+    // 1) quand on rouvre / revient sur l'app, 2) toutes les 20 s, 3) en temps réel (si activé).
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    window.addEventListener('focus', refreshIfVisible);
+    const interval = setInterval(refreshIfVisible, 20000);
+    const channel = supabase
+      .channel('catalog-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'catalog' }, () => load())
+      .subscribe();
+
+    return () => {
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+      window.removeEventListener('focus', refreshIfVisible);
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
