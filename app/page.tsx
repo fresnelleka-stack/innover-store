@@ -150,7 +150,11 @@ export default function Storefront() {
       <section className="bg-gradient-to-br from-red-600 to-red-800 text-white">
         <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14 text-center">
           <h1 className="text-3xl sm:text-4xl font-extrabold">Bienvenue chez INNOVER STORE</h1>
-          <p className="mt-2 text-red-100">Téléphones · Accessoires · High-Tech — au meilleur prix</p>
+          <p className="mt-3 text-white font-bold max-w-2xl mx-auto leading-relaxed">
+            ⚠️ Évitez les arnaques : nous sommes une entreprise sérieuse. Rejoignez notre groupe
+            WhatsApp pour discuter directement avec nos administrateurs au Cameroun et en Chine. Nous
+            vendons en gros et en détail, avec livraison dans toutes les villes du Cameroun.
+          </p>
           <a
             href={WHATSAPP}
             target="_blank"
