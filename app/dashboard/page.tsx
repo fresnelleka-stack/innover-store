@@ -6,6 +6,32 @@ import { supabase } from '@/lib/supabase';
 import { getRole, type Role } from '@/lib/auth';
 import Header from '../components/Header';
 
+// Panne réseau (téléphone : « Load failed » / « Failed to fetch »).
+const isNetworkError = (e: any): boolean => {
+  const m = ((e && (e.message || e.toString())) || '').toLowerCase();
+  return (
+    m.includes('load failed') ||
+    m.includes('failed to fetch') ||
+    m.includes('networkerror') ||
+    m.includes('network request failed') ||
+    m.includes('timeout')
+  );
+};
+
+async function withRetry<T>(fn: () => PromiseLike<T>, tries = 3, delayMs = 800): Promise<T> {
+  let last: any;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isNetworkError(e) || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
@@ -17,14 +43,22 @@ export default function Dashboard() {
   const [stockValue, setStockValue] = useState(0);
   const [productStocks, setProductStocks] = useState<any[]>([]);
   const [stockSearch, setStockSearch] = useState('');
+  // Dépenses / sorties d'argent
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [expLabel, setExpLabel] = useState('');
+  const [expAmount, setExpAmount] = useState('');
+  const [expDate, setExpDate] = useState('');
+  const [expSaving, setExpSaving] = useState(false);
+  const [expError, setExpError] = useState('');
 
   useEffect(() => {
-    const r = getRole();
-    if (!r) {
-      router.replace('/');
-      return;
-    }
-    setRole(r);
+    getRole().then((r) => {
+      if (!r) {
+        router.replace('/');
+        return;
+      }
+      setRole(r);
+    });
   }, [router]);
 
   useEffect(() => {
@@ -69,8 +103,26 @@ export default function Dashboard() {
           0
         )
       );
+
+      // Dépenses / sorties d'argent (même période que les ventes).
+      // Non-bloquant : si la table n'existe pas encore, on affiche juste 0 dépense.
+      try {
+        const { data: expData, error: expErr } = await withRetry(() => {
+          let q = supabase.from('expenses').select('*').order('spent_at', { ascending: false });
+          if (cutoff) q = q.gte('spent_at', cutoff);
+          return q;
+        });
+        if (expErr) throw expErr;
+        setExpenses(expData || []);
+      } catch {
+        setExpenses([]);
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(
+        isNetworkError(err)
+          ? '⚠️ Connexion instable — les données n\'ont pas pu se charger. Rafraîchis la page.'
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
@@ -80,6 +132,57 @@ export default function Dashboard() {
   const totalProfit = sales.reduce((s, x) => s + Number(x.profit_xaf || 0), 0);
   const itemsSold = sales.reduce((s, x) => s + Number(x.quantity || 0), 0);
   const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0';
+  // Dépenses de la période + bénéfice net (ce qui te reste vraiment)
+  const totalExpenses = expenses.reduce((s, x) => s + Number(x.amount_xaf || 0), 0);
+  const netProfit = totalProfit - totalExpenses;
+  // Argent réel en caisse = tout ce qui a été encaissé − tout ce qui est sorti.
+  const cashOnHand = totalRevenue - totalExpenses;
+
+  const addExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(expAmount);
+    if (!expLabel.trim()) {
+      setExpError('Écris à quoi sert la dépense (ex : Transport, Loyer).');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setExpError('Entre un montant valide (supérieur à 0).');
+      return;
+    }
+    setExpError('');
+    setExpSaving(true);
+    try {
+      const payload: Record<string, any> = { label: expLabel.trim(), amount_xaf: amount };
+      if (expDate) payload.spent_at = new Date(expDate + 'T12:00:00').toISOString();
+      const { data, error } = await withRetry(() =>
+        supabase.from('expenses').insert([payload]).select()
+      );
+      if (error) throw error;
+      if (data) setExpenses((prev) => [data[0], ...prev]);
+      setExpLabel('');
+      setExpAmount('');
+      setExpDate('');
+    } catch (err: any) {
+      setExpError(
+        isNetworkError(err)
+          ? '⚠️ Connexion instable — la dépense n\'a pas été enregistrée. Réessaie.'
+          : err.message || 'Erreur'
+      );
+    } finally {
+      setExpSaving(false);
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!confirm('Supprimer cette dépense ?')) return;
+    try {
+      const { error } = await withRetry(() => supabase.from('expenses').delete().eq('id', id));
+      if (error) throw error;
+      setExpenses((prev) => prev.filter((x) => x.id !== id));
+    } catch (err: any) {
+      setExpError(isNetworkError(err) ? '⚠️ Connexion instable — réessaie.' : err.message || 'Erreur');
+    }
+  };
 
   // Alerte stock : produits épuisés (0) ou presque (<= 3), du plus critique au moins.
   const lowStock = productStocks
@@ -152,7 +255,10 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           {[
             { label: 'Revenu Total', value: fmt(totalRevenue) + ' XAF', color: 'text-blue-600', icon: '💰', ring: 'border-blue-500' },
-            { label: 'Profit Total', value: fmt(totalProfit) + ' XAF', color: 'text-green-600', icon: '📈', ring: 'border-green-500' },
+            { label: 'Profit Total', value: fmt(totalProfit) + ' XAF', color: 'text-green-600', icon: '📈', ring: 'border-green-500', note: 'avant dépenses' },
+            { label: 'Dépenses', value: '- ' + fmt(totalExpenses) + ' XAF', color: 'text-red-600', icon: '💸', ring: 'border-red-500', note: 'sorties d’argent' },
+            { label: 'Argent en Caisse', value: fmt(cashOnHand) + ' XAF', color: cashOnHand >= 0 ? 'text-emerald-600' : 'text-red-600', icon: '💵', ring: cashOnHand >= 0 ? 'border-emerald-500' : 'border-red-500', note: 'revenu total − dépenses (l’argent qu’on a)' },
+            { label: 'Bénéfice Net', value: fmt(netProfit) + ' XAF', color: netProfit >= 0 ? 'text-emerald-600' : 'text-red-600', icon: '✅', ring: netProfit >= 0 ? 'border-emerald-500' : 'border-red-500', note: 'profit − dépenses' },
             { label: 'Articles Vendus', value: String(itemsSold), color: 'text-purple-600', icon: '🛒', ring: 'border-purple-500' },
             { label: 'Marge Moyenne', value: profitMargin + ' %', color: 'text-indigo-600', icon: '⚖️', ring: 'border-indigo-500' },
             { label: 'Stock Restant', value: String(stockRemaining), color: 'text-orange-600', icon: '📦', ring: 'border-orange-500' },
@@ -167,6 +273,83 @@ export default function Dashboard() {
               {m.note && <p className="text-xs text-gray-400 mt-0.5">{m.note}</p>}
             </div>
           ))}
+        </div>
+
+        {/* Dépenses / sorties d'argent */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8 border-l-4 border-red-500">
+          <h2 className="text-xl font-bold mb-1 text-gray-900">💸 Dépenses / Sorties d&apos;argent</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Note ici tout l&apos;argent qui sort (transport, loyer, achats…). Ça se déduit
+            automatiquement de l&apos;<span className="font-semibold">Argent en Caisse</span> (revenu −
+            dépenses) et du <span className="font-semibold">Bénéfice Net</span>.
+          </p>
+
+          <form onSubmit={addExpense} className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="À quoi ? (ex : Transport)"
+              value={expLabel}
+              onChange={(e) => setExpLabel(e.target.value)}
+              className="sm:col-span-2 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-red-500"
+            />
+            <input
+              type="number"
+              min="0"
+              placeholder="Montant (XAF)"
+              value={expAmount}
+              onChange={(e) => setExpAmount(e.target.value)}
+              className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-red-500"
+            />
+            <input
+              type="date"
+              value={expDate}
+              onChange={(e) => setExpDate(e.target.value)}
+              title="Date de la dépense (laisser vide = aujourd'hui)"
+              className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white focus:outline-none focus:border-red-500"
+            />
+            <button
+              type="submit"
+              disabled={expSaving}
+              className="sm:col-span-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white font-bold py-2 rounded"
+            >
+              {expSaving ? 'Enregistrement...' : '➖ Enregistrer la dépense'}
+            </button>
+          </form>
+          {expError && <p className="text-red-600 text-sm mb-3">{expError}</p>}
+
+          {expenses.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-3">
+              Aucune dépense sur cette période.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              <div className="flex justify-between items-center bg-red-50 rounded px-3 py-2 font-bold text-red-700">
+                <span>Total dépenses ({dateRange === 'all' ? 'tout' : 'période'})</span>
+                <span>- {fmt(totalExpenses)} XAF</span>
+              </div>
+              {expenses.map((x) => (
+                <div
+                  key={x.id}
+                  className="flex justify-between items-center border-b last:border-b-0 py-2 gap-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{x.label}</p>
+                    <p className="text-xs text-gray-500">{timeOf(x.spent_at)}</p>
+                  </div>
+                  <p className="font-semibold text-red-600 whitespace-nowrap">
+                    - {fmt(Number(x.amount_xaf || 0))} XAF
+                  </p>
+                  <button
+                    onClick={() => deleteExpense(x.id)}
+                    className="text-gray-400 hover:text-red-600 font-bold px-2"
+                    title="Supprimer cette dépense"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Alerte stock bas / épuisé */}

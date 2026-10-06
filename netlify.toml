@@ -1,0 +1,12 @@
+# INNOVER STORE — déploiement Netlify (équipe INNOVER STORE)
+# Le runtime Next.js est déclaré ici pour qu'un build local
+# (`netlify build --offline`) produise le même résultat qu'un build en ligne.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

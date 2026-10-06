@@ -1,44 +1,42 @@
-// Authentification par mot de passe (vérifié par son empreinte SHA-256).
-// Le mot de passe en clair n'apparaît PAS dans le code — seulement son empreinte.
-// Deux rôles : 'admin' (accès total) et 'vendeur' (vente uniquement).
+// Authentification RÉELLE via Supabase Auth (vérifiée côté serveur).
+// Le mot de passe n'est PAS dans le code : il est stocké (chiffré) par Supabase.
+// Deux comptes : admin (accès total) et vendeur (vente + ajout, mais pas de suppression).
+
+import { supabase } from './supabase';
 
 export type Role = 'admin' | 'vendeur';
 
-const KEY = 'innover_role';
+// Emails des comptes (ce ne sont PAS des secrets : la sécurité vient du mot de passe
+// vérifié par le serveur + le verrouillage de la base RLS).
+// ⚠️ Ces emails doivent correspondre EXACTEMENT aux comptes créés dans Supabase.
+const ADMIN_EMAIL = 'jildasinno@gmail.com';
+const VENDEUR_EMAIL = 'jildasinno+vendeur@gmail.com';
 
-// Empreintes SHA-256 des mots de passe (pas les mots de passe eux-mêmes).
-const ADMIN_HASH = 'eec8067554e6eb7b45cd20fb1c5143682abafc35b02bef845f7e5ca41843e582';
-const VENDEUR_HASH = '4c7d5e88ae205f519fe348f491cf81e9e5551fcfc47a78f8981ffd5f06727ecd';
-
-export function getRole(): Role | null {
-  if (typeof window === 'undefined') return null;
-  const r = window.localStorage.getItem(KEY);
-  return r === 'admin' || r === 'vendeur' ? r : null;
+// Retrouve le rôle à partir de l'email connecté.
+function roleForEmail(email: string | null | undefined): Role | null {
+  const e = (email || '').toLowerCase();
+  if (e === ADMIN_EMAIL.toLowerCase()) return 'admin';
+  if (e === VENDEUR_EMAIL.toLowerCase()) return 'vendeur';
+  return null;
 }
 
-async function sha256(text: string): Promise<string> {
-  const data = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Vérifie le mot de passe saisi (par empreinte) et enregistre le rôle.
-// Renvoie le rôle ou null si le mot de passe est invalide.
+// Connexion : on saisit seulement le mot de passe.
+// On essaie d'abord le compte admin, puis le compte vendeur.
 export async function login(password: string): Promise<Role | null> {
-  const hash = await sha256(password.trim());
-  if (hash === ADMIN_HASH) {
-    window.localStorage.setItem(KEY, 'admin');
-    return 'admin';
-  }
-  if (hash === VENDEUR_HASH) {
-    window.localStorage.setItem(KEY, 'vendeur');
-    return 'vendeur';
+  const pass = password.trim();
+  for (const email of [ADMIN_EMAIL, VENDEUR_EMAIL]) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if (!error && data.user) return roleForEmail(data.user.email);
   }
   return null;
 }
 
-export function logout() {
-  if (typeof window !== 'undefined') window.localStorage.removeItem(KEY);
+// Rôle courant d'après la session active.
+export async function getRole(): Promise<Role | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session ? roleForEmail(data.session.user.email) : null;
+}
+
+export async function logout(): Promise<void> {
+  await supabase.auth.signOut();
 }

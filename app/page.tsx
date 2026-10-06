@@ -161,7 +161,7 @@ export default function Storefront() {
   };
 
   useEffect(() => {
-    setIsStaff(!!getRole());
+    getRole().then((r) => setIsStaff(!!r));
     load();
 
     // Rafraîchissement automatique du catalogue :

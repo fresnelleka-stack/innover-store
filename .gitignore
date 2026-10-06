@@ -28,3 +28,9 @@ next-env.d.ts
 # static export output
 /out
 *.zip
+
+# Local Netlify folder
+.netlify
+
+# Reglages locaux Claude Code
+.claude/

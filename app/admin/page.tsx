@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Product } from '@/lib/supabase';
@@ -41,6 +41,33 @@ const parseDesc = (sku: string | null | undefined): string => {
   return i >= 0 ? s.slice(i + DESC_SEP.length) : '';
 };
 
+// Panne réseau (téléphone : « Load failed » sur Safari, « Failed to fetch » sur Chrome).
+const isNetworkError = (e: any): boolean => {
+  const m = ((e && (e.message || e.toString())) || '').toLowerCase();
+  return (
+    m.includes('load failed') ||
+    m.includes('failed to fetch') ||
+    m.includes('networkerror') ||
+    m.includes('network request failed') ||
+    m.includes('timeout')
+  );
+};
+
+// Réessaie une opération réseau jusqu'à `tries` fois (utile sur connexion mobile instable).
+async function withRetry<T>(fn: () => PromiseLike<T>, tries = 3, delayMs = 800): Promise<T> {
+  let last: any;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isNetworkError(e) || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
@@ -65,6 +92,10 @@ export default function AdminPanel() {
     | null
   >(null);
   const [imeiWarning, setImeiWarning] = useState('');
+  const [imeiChecking, setImeiChecking] = useState(false);
+  const [imeiOk, setImeiOk] = useState(false);
+  const imeiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
   const [formData, setFormData] = useState<ProductForm>(emptyFormData);
 
   // Un produit peut avoir plusieurs IMEI (un par appareil), saisis un par ligne.
@@ -79,25 +110,72 @@ export default function AdminPanel() {
     imeis: string[]
   ): Promise<{ imei: string; name: string } | null> => {
     if (imeis.length === 0) return null;
-    let q = supabase.from('products').select('id, name, imei');
-    if (editingId) q = q.neq('id', editingId);
-    const { data, error } = await q;
-    if (error) return null;
-    for (const p of data || []) {
-      const set = new Set(parseImeis(p.imei));
-      for (const im of imeis) if (set.has(im)) return { imei: im, name: p.name };
+    try {
+      const { data, error } = await withRetry(() => {
+        let q = supabase.from('products').select('id, name, imei');
+        if (editingId) q = q.neq('id', editingId);
+        return q;
+      });
+      if (error) return null;
+      for (const p of data || []) {
+        const set = new Set(parseImeis(p.imei));
+        for (const im of imeis) if (set.has(im)) return { imei: im, name: p.name };
+      }
+    } catch {
+      // Coup de réseau pendant la vérification : on ne bloque pas l'ajout.
+      return null;
     }
     return null;
   };
 
-  useEffect(() => {
-    const r = getRole();
-    if (!r) {
-      router.replace('/');
+  // Vérification AUTOMATIQUE en temps réel pendant la saisie des IMEI :
+  // 1) doublon dans le même produit (IMEI écrit deux fois), 2) IMEI déjà sur un autre produit.
+  const checkImeiLive = (value: string) => {
+    if (imeiTimer.current) clearTimeout(imeiTimer.current);
+    setImeiOk(false);
+    const list = parseImeis(value);
+    if (list.length === 0) {
+      setImeiChecking(false);
+      setImeiWarning('');
       return;
     }
-    // Admin ET vendeur ont accès à la gestion des produits (le vendeur ne peut juste pas supprimer).
-    setRole(r);
+    // 1) Doublon à l'intérieur de la même saisie (détection instantanée)
+    const seen = new Set<string>();
+    for (const im of list) {
+      if (seen.has(im)) {
+        setImeiChecking(false);
+        setImeiWarning('IMEI écrit deux fois : ' + im + ' — chaque appareil a un IMEI unique.');
+        return;
+      }
+      seen.add(im);
+    }
+    // 2) Doublon avec un autre produit (vérifié dans la base, après une courte pause de saisie)
+    setImeiChecking(true);
+    setImeiWarning('');
+    imeiTimer.current = setTimeout(async () => {
+      const conflict = await findImeiConflict(list);
+      setImeiChecking(false);
+      if (conflict) {
+        setImeiWarning(
+          'IMEI déjà enregistré : ' + conflict.imei + ' (produit : ' + conflict.name + ')'
+        );
+        setImeiOk(false);
+      } else {
+        setImeiWarning('');
+        setImeiOk(true);
+      }
+    }, 600);
+  };
+
+  useEffect(() => {
+    getRole().then((r) => {
+      if (!r) {
+        router.replace('/');
+        return;
+      }
+      // Admin ET vendeur ont accès à la gestion des produits (le vendeur ne peut juste pas supprimer).
+      setRole(r);
+    });
   }, [router]);
 
   useEffect(() => {
@@ -107,16 +185,17 @@ export default function AdminPanel() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await withRetry(() =>
+        supabase.from('products').select('*').order('created_at', { ascending: false })
+      );
 
       if (error) throw error;
       setProducts(data || []);
 
       // Ventes déjà enregistrées : produits vendus (non modifiables) + IMEI vendus (affichés en vert)
-      const { data: soldRows } = await supabase.from('sales').select('product_id, imei, total_price_xaf');
+      const { data: soldRows } = await withRetry(() =>
+        supabase.from('sales').select('product_id, imei, total_price_xaf')
+      );
       const ids = Array.from(
         new Set((soldRows || []).map((r: any) => r.product_id).filter(Boolean))
       ) as string[];
@@ -131,7 +210,11 @@ export default function AdminPanel() {
       });
       setSoldImeiPrice(priceMap);
     } catch (err: any) {
-      setError(err.message);
+      setError(
+        isNetworkError(err)
+          ? '⚠️ Connexion internet instable — la liste n\'a pas pu se charger. Vérifie ta connexion et rafraîchis.'
+          : err.message
+      );
     } finally {
       setLoading(false);
     }
@@ -152,6 +235,17 @@ export default function AdminPanel() {
       // Stock = nombre d'IMEI si des IMEI sont fournis, sinon la quantité saisie.
       const quantity_available =
         imeiList.length > 0 ? imeiList.length : formData.quantity_available;
+
+      // Refuser un IMEI écrit deux fois dans la même saisie
+      const seen = new Set<string>();
+      for (const im of imeiList) {
+        if (seen.has(im)) {
+          setImeiWarning('IMEI écrit deux fois : ' + im + ' — chaque appareil a un IMEI unique.');
+          setError('IMEI en double dans la saisie : ' + im + ' est écrit plusieurs fois.');
+          return;
+        }
+        seen.add(im);
+      }
 
       // Refuser un IMEI déjà présent (sur n'importe quel produit)
       const conflict = await findImeiConflict(imeiList);
@@ -174,19 +268,16 @@ export default function AdminPanel() {
       delete base.description;
 
       if (editingId) {
-        const { data, error } = await supabase
-          .from('products')
-          .update(base)
-          .eq('id', editingId)
-          .select();
+        const { data, error } = await withRetry(() =>
+          supabase.from('products').update(base).eq('id', editingId).select()
+        );
 
         if (error) throw error;
         if (data) setProducts(products.map((p) => (p.id === editingId ? data[0] : p)));
       } else {
-        const { data, error } = await supabase
-          .from('products')
-          .insert([base])
-          .select();
+        const { data, error } = await withRetry(() =>
+          supabase.from('products').insert([base]).select()
+        );
 
         if (error) throw error;
         if (data) setProducts([data[0], ...products]);
@@ -196,8 +287,12 @@ export default function AdminPanel() {
       setEditingId(null);
       setShowForm(false);
       setImeiWarning('');
+      setImeiChecking(false);
+      setImeiOk(false);
     } catch (err: any) {
-      if (err?.code === '23505' || (err?.message && err.message.toLowerCase().includes('imei'))) {
+      if (isNetworkError(err)) {
+        setError('⚠️ Connexion internet instable — le produit n\'a pas été enregistré. Vérifie ta connexion et réessaie.');
+      } else if (err?.code === '23505' || (err?.message && err.message.toLowerCase().includes('imei'))) {
         setError('Cet IMEI est déjà enregistré dans le système. Impossible de l\'ajouter deux fois.');
       } else {
         setError(err.message);
@@ -218,13 +313,21 @@ export default function AdminPanel() {
       description: parseDesc(p.sku),
       image_url: p.image_url || '',
     });
+    setImeiWarning('');
+    setImeiChecking(false);
+    setImeiOk(false);
     setShowForm(true);
+    // Faire défiler vers le formulaire pour qu'il soit bien visible.
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const handleCancelForm = () => {
     setShowForm(false);
     setEditingId(null);
     setFormData(emptyFormData);
+    setImeiWarning('');
+    setImeiChecking(false);
+    setImeiOk(false);
   };
 
   const handleDeleteProduct = async (id: string) => {
@@ -424,6 +527,12 @@ export default function AdminPanel() {
         alert('Aucun IMEI saisi.');
         return;
       }
+      const seenAdd = new Set<string>();
+      const dupInput = toAdd.find((im) => (seenAdd.has(im) ? true : (seenAdd.add(im), false)));
+      if (dupInput) {
+        alert('IMEI écrit deux fois dans la saisie : ' + dupInput);
+        return;
+      }
       const dupHere = toAdd.find((im) => existing.includes(im));
       if (dupHere) {
         alert('IMEI déjà dans ce produit : ' + dupHere);
@@ -468,6 +577,61 @@ export default function AdminPanel() {
         .select();
       if (error) throw error;
       if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // Corriger le prix d'achat (coût) d'un produit — admin seulement, marche même
+  // sur un produit « figé ». Si des ventes existent déjà, propose de recalculer
+  // leur profit avec le bon coût (profit = total encaissé − coût × quantité).
+  const handleFixCost = async (p: Product) => {
+    const input = prompt(
+      'Nouveau prix d\'achat de « ' + p.name + ' » (XAF) :',
+      String(p.cost_xaf ?? '')
+    );
+    if (input === null) return;
+    const newCost = parseFloat(String(input).replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(newCost) || newCost < 0) {
+      alert('Entre un montant valide.');
+      return;
+    }
+    try {
+      setError('');
+      const { data, error } = await supabase
+        .from('products')
+        .update({ cost_xaf: newCost })
+        .eq('id', p.id)
+        .select();
+      if (error) throw error;
+      if (data) setProducts(products.map((x) => (x.id === p.id ? data[0] : x)));
+
+      const { data: salesData, error: salesErr } = await supabase
+        .from('sales')
+        .select('id, quantity, total_price_xaf')
+        .eq('product_id', p.id);
+      if (salesErr) throw salesErr;
+      if (salesData && salesData.length > 0) {
+        const ok = confirm(
+          salesData.length +
+            ' vente(s) de ce produit déjà enregistrée(s).\n' +
+            'Recalculer leur profit avec le nouveau prix d\'achat (' +
+            newCost.toLocaleString('fr-CM') +
+            ' XAF) ?'
+        );
+        if (ok) {
+          for (const s of salesData) {
+            const { error: updErr } = await supabase
+              .from('sales')
+              .update({
+                profit_xaf: Number(s.total_price_xaf || 0) - newCost * Number(s.quantity || 1),
+              })
+              .eq('id', s.id);
+            if (updErr) throw updErr;
+          }
+          alert('✅ Profit de ' + salesData.length + ' vente(s) recalculé.');
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     }
@@ -532,7 +696,7 @@ export default function AdminPanel() {
         </div>
 
         {showForm && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div ref={formRef} className="bg-white rounded-lg shadow p-6 mb-6 scroll-mt-24">
             <h2 className="text-xl font-bold mb-4 text-gray-900">
               {editingId ? 'Modifier le produit' : 'Ajouter un nouveau produit'}
             </h2>
@@ -564,15 +728,21 @@ export default function AdminPanel() {
                   value={formData.imei}
                   onChange={(e) => {
                     setFormData({ ...formData, imei: e.target.value });
-                    if (imeiWarning) setImeiWarning('');
+                    checkImeiLive(e.target.value);
                   }}
                   className={
                     'w-full border rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 ' +
-                    (imeiWarning ? 'border-red-500' : '')
+                    (imeiWarning ? 'border-red-500' : imeiOk ? 'border-green-500' : '')
                   }
                 />
                 {imeiWarning && (
-                  <p className="text-red-600 text-sm mt-1">⚠️ {imeiWarning}</p>
+                  <p className="text-red-600 text-sm mt-1 font-semibold">⚠️ {imeiWarning}</p>
+                )}
+                {!imeiWarning && imeiChecking && (
+                  <p className="text-gray-500 text-sm mt-1">⏳ Vérification des IMEI…</p>
+                )}
+                {!imeiWarning && !imeiChecking && imeiOk && (
+                  <p className="text-green-600 text-sm mt-1">✅ IMEI disponible(s), aucun doublon.</p>
                 )}
               </div>
               <input
@@ -699,10 +869,10 @@ export default function AdminPanel() {
                           }
                           return (
                             <div className="space-y-1 min-w-[260px]">
-                              {list.map((im) =>
+                              {list.map((im, idx) =>
                                 soldImeis.includes(im) ? (
                                   <div
-                                    key={im}
+                                    key={im + '-' + idx}
                                     title="Vendu"
                                     className="text-xs font-mono px-2 py-1 rounded bg-green-200 text-green-900 flex items-center gap-2"
                                   >
@@ -713,7 +883,7 @@ export default function AdminPanel() {
                                     </span>
                                   </div>
                                 ) : (
-                                  <div key={im} className="flex items-center gap-1">
+                                  <div key={im + '-' + idx} className="flex items-center gap-1">
                                     <span className="font-mono text-xs text-gray-800 flex-1">{im}</span>
                                     <input
                                       type="number"
@@ -763,6 +933,15 @@ export default function AdminPanel() {
                               Modifier
                             </button>
                           ) : null}
+                          {role === 'admin' && (
+                            <button
+                              onClick={() => handleFixCost(p)}
+                              className="text-orange-600 hover:text-orange-800 font-semibold"
+                              title="Corriger le prix d'achat (marche même si le produit est vendu)"
+                            >
+                              💲 Coût
+                            </button>
+                          )}
                           {role === 'admin' && (
                             <button
                               onClick={() => handleRestock(p)}

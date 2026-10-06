@@ -17,8 +17,8 @@ export default function Header({ role }: { role: Role }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const doLogout = () => {
-    logout();
+  const doLogout = async () => {
+    await logout();
     router.replace('/');
   };
 

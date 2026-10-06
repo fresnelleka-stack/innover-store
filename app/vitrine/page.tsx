@@ -45,13 +45,46 @@ const compressToBlob = (file: File): Promise<Blob> =>
     reader.readAsDataURL(file);
   });
 
+// Panne réseau (téléphone : « Load failed » sur Safari, « Failed to fetch » sur Chrome).
+const isNetworkError = (e: any): boolean => {
+  const m = ((e && (e.message || e.toString())) || '').toLowerCase();
+  return (
+    m.includes('load failed') ||
+    m.includes('failed to fetch') ||
+    m.includes('networkerror') ||
+    m.includes('network request failed') ||
+    m.includes('timeout')
+  );
+};
+
+// Réessaie une opération réseau jusqu'à `tries` fois (connexion mobile instable).
+async function withRetry<T>(fn: () => PromiseLike<T>, tries = 3, delayMs = 800): Promise<T> {
+  let last: any;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isNetworkError(e) || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 // Compresse + envoie la photo dans Supabase Storage → renvoie l'URL publique (légère).
 const uploadPhoto = async (file: File): Promise<string> => {
   const blob = await compressToBlob(file);
   const path = Date.now() + '-' + Math.random().toString(36).slice(2, 9) + '.jpg';
-  const { error } = await supabase.storage
-    .from('photos')
-    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+  const { error } = await withRetry(() =>
+    supabase.storage
+      .from('photos')
+      .upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+      .then((res) => {
+        if (res.error) throw res.error;
+        return res;
+      })
+  );
   if (error) throw error;
   return supabase.storage.from('photos').getPublicUrl(path).data.publicUrl;
 };
@@ -92,12 +125,13 @@ export default function VitrineAdmin() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const r = getRole();
-    if (!r) {
-      router.replace('/');
-      return;
-    }
-    setRole(r);
+    getRole().then((r) => {
+      if (!r) {
+        router.replace('/');
+        return;
+      }
+      setRole(r);
+    });
   }, [router]);
 
   useEffect(() => {
@@ -155,16 +189,22 @@ export default function VitrineAdmin() {
         image_url: form.images.length ? JSON.stringify(form.images) : null,
       };
       if (form.id) {
-        const { error } = await supabase.from('catalog').update(payload).eq('id', form.id);
+        const { error } = await withRetry(() =>
+          supabase.from('catalog').update(payload).eq('id', form.id)
+        );
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('catalog').insert([payload]);
+        const { error } = await withRetry(() => supabase.from('catalog').insert([payload]));
         if (error) throw error;
       }
       setForm(null);
       await load();
     } catch (err: any) {
-      setError(err.message || 'Erreur');
+      setError(
+        isNetworkError(err)
+          ? '⚠️ Connexion internet instable — non enregistré. Vérifie ta connexion et réessaie.'
+          : err.message || 'Erreur'
+      );
     } finally {
       setSaving(false);
     }
@@ -299,7 +339,11 @@ export default function VitrineAdmin() {
                         const url = await uploadPhoto(f);
                         setForm((prev) => (prev ? { ...prev, images: [...prev.images, url] } : prev));
                       } catch (err: any) {
-                        setError('Échec envoi photo : ' + (err?.message || ''));
+                        setError(
+                          isNetworkError(err)
+                            ? '⚠️ Connexion instable — la photo n\'a pas pu être envoyée. Réessaie (ou utilise une photo plus légère).'
+                            : 'Échec envoi photo : ' + (err?.message || '')
+                        );
                       }
                     }
                     setUploading(false);

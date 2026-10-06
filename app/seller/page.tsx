@@ -13,14 +13,16 @@ export default function ProduitVenduPage() {
   const [error, setError] = useState('');
   const [sales, setSales] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [fixingId, setFixingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const r = getRole();
-    if (!r) {
-      router.replace('/');
-      return;
-    }
-    setRole(r);
+    getRole().then((r) => {
+      if (!r) {
+        router.replace('/');
+        return;
+      }
+      setRole(r);
+    });
   }, [router]);
 
   useEffect(() => {
@@ -42,6 +44,46 @@ export default function ProduitVenduPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Corriger le prix d'une vente mal saisie (admin seulement).
+  // Le profit se recalcule tout seul : le coût d'achat ne change pas, donc
+  // nouveau profit = ancien profit + (nouveau total − ancien total).
+  const fixSalePrice = async (sale: any) => {
+    const input = prompt(
+      'Nouveau prix TOTAL de cette vente (XAF) :',
+      String(sale.total_price_xaf ?? '')
+    );
+    if (input === null) return;
+    const newTotal = parseFloat(String(input).replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(newTotal) || newTotal <= 0) {
+      alert('Entre un montant valide (supérieur à 0).');
+      return;
+    }
+    const qty = Number(sale.quantity || 1);
+    const oldTotal = Number(sale.total_price_xaf || 0);
+    const newProfit = Number(sale.profit_xaf || 0) + (newTotal - oldTotal);
+    try {
+      setError('');
+      setFixingId(sale.id);
+      const { data, error } = await supabase
+        .from('sales')
+        .update({
+          unit_price_xaf: newTotal / qty,
+          total_price_xaf: newTotal,
+          profit_xaf: newProfit,
+        })
+        .eq('id', sale.id)
+        .select();
+      if (error) throw error;
+      if (data && data[0]) {
+        setSales((prev) => prev.map((s) => (s.id === sale.id ? { ...s, ...data[0] } : s)));
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setFixingId(null);
     }
   };
 
@@ -162,6 +204,16 @@ export default function ProduitVenduPage() {
                   <div className="text-right shrink-0 ml-3">
                     <p className="font-semibold text-blue-600">{fmt(sale.total_price_xaf)} XAF</p>
                     <p className="text-xs text-green-600">+{fmt(sale.profit_xaf)} profit</p>
+                    {role === 'admin' && (
+                      <button
+                        onClick={() => fixSalePrice(sale)}
+                        disabled={fixingId === sale.id}
+                        title="Corriger le prix de cette vente"
+                        className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline disabled:opacity-50"
+                      >
+                        {fixingId === sale.id ? '…' : '✏️ Corriger'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
