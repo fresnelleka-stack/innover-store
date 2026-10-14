@@ -14,6 +14,7 @@ export default function ProduitVenduPage() {
   const [sales, setSales] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [fixingId, setFixingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     getRole().then((r) => {
@@ -84,6 +85,60 @@ export default function ProduitVenduPage() {
       setError(err.message);
     } finally {
       setFixingId(null);
+    }
+  };
+
+  // Supprimer une vente faite par erreur (admin seulement).
+  // La vente est effacée et le produit revient en stock (un IMEI vendu redevient disponible).
+  const deleteSale = async (sale: any) => {
+    const name = sale.products?.name || 'ce produit';
+    const ok = confirm(
+      'Supprimer la vente de ' + name +
+      (sale.imei ? ' (IMEI ' + sale.imei + ')' : '') +
+      ' à ' + fmt(sale.total_price_xaf) + ' XAF ?\n\n' +
+      'La vente sera effacée définitivement et le produit reviendra en stock.'
+    );
+    if (!ok) return;
+    try {
+      setError('');
+      setDeletingId(sale.id);
+
+      const { data: deleted, error: delError } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', sale.id)
+        .select();
+      if (delError) throw delError;
+      if (!deleted || deleted.length === 0) {
+        throw new Error("La vente n'a pas pu être supprimée (accès refusé).");
+      }
+
+      // Remettre en stock (si le produit existe encore)
+      if (sale.product_id) {
+        const { data: p, error: pError } = await supabase
+          .from('products')
+          .select('quantity_available, quantity_sold')
+          .eq('id', sale.product_id)
+          .maybeSingle();
+        if (pError) throw pError;
+        if (p) {
+          const qty = Number(sale.quantity || 1);
+          const { error: updError } = await supabase
+            .from('products')
+            .update({
+              quantity_available: (p.quantity_available || 0) + qty,
+              quantity_sold: Math.max(0, (p.quantity_sold || 0) - qty),
+            })
+            .eq('id', sale.product_id);
+          if (updError) throw updError;
+        }
+      }
+
+      setSales((prev) => prev.filter((s) => s.id !== sale.id));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -205,14 +260,24 @@ export default function ProduitVenduPage() {
                     <p className="font-semibold text-blue-600">{fmt(sale.total_price_xaf)} XAF</p>
                     <p className="text-xs text-green-600">+{fmt(sale.profit_xaf)} profit</p>
                     {role === 'admin' && (
-                      <button
-                        onClick={() => fixSalePrice(sale)}
-                        disabled={fixingId === sale.id}
-                        title="Corriger le prix de cette vente"
-                        className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline disabled:opacity-50"
-                      >
-                        {fixingId === sale.id ? '…' : '✏️ Corriger'}
-                      </button>
+                      <div className="flex flex-col items-end">
+                        <button
+                          onClick={() => fixSalePrice(sale)}
+                          disabled={fixingId === sale.id}
+                          title="Corriger le prix de cette vente"
+                          className="mt-1 text-xs text-orange-600 hover:text-orange-800 underline disabled:opacity-50"
+                        >
+                          {fixingId === sale.id ? '…' : '✏️ Corriger'}
+                        </button>
+                        <button
+                          onClick={() => deleteSale(sale)}
+                          disabled={deletingId !== null}
+                          title="Supprimer cette vente faite par erreur (le produit revient en stock)"
+                          className="mt-1 text-xs text-red-600 hover:text-red-800 underline disabled:opacity-50"
+                        >
+                          {deletingId === sale.id ? '…' : '🗑️ Supprimer'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
