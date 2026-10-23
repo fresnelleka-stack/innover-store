@@ -127,16 +127,8 @@ create policy "payouts_lecture" on public.payouts
 create policy "payouts_admin" on public.payouts
   for all using (public.innover_is_admin()) with check (public.innover_is_admin());
 
--- PHOTOS (Supabase Storage, dossier « photos ») : l'équipe peut envoyer des photos
-drop policy if exists "photos_equipe_ajout" on storage.objects;
-create policy "photos_equipe_ajout" on storage.objects
-  for insert with check (bucket_id = 'photos' and public.innover_is_staff());
-drop policy if exists "photos_equipe_modif" on storage.objects;
-create policy "photos_equipe_modif" on storage.objects
-  for update using (bucket_id = 'photos' and public.innover_is_staff());
-drop policy if exists "photos_equipe_suppr" on storage.objects;
-create policy "photos_equipe_suppr" on storage.objects
-  for delete using (bucket_id = 'photos' and public.innover_is_staff());
+-- (Les règles des PHOTOS — Supabase Storage — ne sont pas modifiées ici :
+--  l'éditeur SQL n'a souvent pas le droit d'y toucher, ce qui annulait tout le script.)
 
 -- ============================================================
 -- FIN. Ensuite, dans Supabase → Authentication → Users → « Add user »,
