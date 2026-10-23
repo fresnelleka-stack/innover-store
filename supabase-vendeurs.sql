@@ -26,8 +26,8 @@ create or replace function public.innover_is_staff() returns boolean
 language sql stable as $$
   select public.innover_email() in (
     'jildasinno@gmail.com',          -- admin (le patron)
-    'jildasinno+gildas@gmail.com',   -- Gildas
-    'jildasinno+harold@gmail.com'    -- Harold
+    'gildaslekajio@icloud.com',   -- Gildas
+    'hlekajio@gmail.com'    -- Harold
   )
 $$;
 
@@ -133,7 +133,7 @@ create policy "payouts_admin" on public.payouts
 -- ============================================================
 -- FIN. Ensuite, dans Supabase → Authentication → Users → « Add user »,
 -- crée 2 comptes (coche « Auto Confirm User ») :
---   • jildasinno+gildas@gmail.com   avec le mot de passe de Gildas
---   • jildasinno+harold@gmail.com   avec le mot de passe de Harold
+--   • gildaslekajio@icloud.com   avec le mot de passe de Gildas
+--   • hlekajio@gmail.com   avec le mot de passe de Harold
 -- (mots de passe tous DIFFÉRENTS, et différents de celui de l'admin)
 -- ============================================================

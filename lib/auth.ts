@@ -17,8 +17,8 @@ export type Account = { email: string; role: Role; name: string };
 export const ADMIN_EMAIL = 'jildasinno@gmail.com';
 
 export const SELLERS: Account[] = [
-  { email: 'jildasinno+gildas@gmail.com', role: 'vendeur', name: 'Gildas' },
-  { email: 'jildasinno+harold@gmail.com', role: 'vendeur', name: 'Harold' },
+  { email: 'gildaslekajio@icloud.com', role: 'vendeur', name: 'Gildas' },
+  { email: 'hlekajio@gmail.com', role: 'vendeur', name: 'Harold' },
 ];
 
 const ACCOUNTS: Account[] = [{ email: ADMIN_EMAIL, role: 'admin', name: 'Admin' }, ...SELLERS];
