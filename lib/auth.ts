@@ -1,41 +1,60 @@
 // Authentification RÉELLE via Supabase Auth (vérifiée côté serveur).
 // Le mot de passe n'est PAS dans le code : il est stocké (chiffré) par Supabase.
-// Deux comptes : admin (accès total) et vendeur (vente + ajout, mais pas de suppression).
+// Un compte admin (accès total) + un compte PERSONNEL par vendeur (une boutique chacun) :
+// chaque vente est enregistrée au nom de celui qui est connecté.
 
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export type Role = 'admin' | 'vendeur';
 
+export type Account = { email: string; role: Role; name: string };
+
 // Emails des comptes (ce ne sont PAS des secrets : la sécurité vient du mot de passe
 // vérifié par le serveur + le verrouillage de la base RLS).
-// ⚠️ Ces emails doivent correspondre EXACTEMENT aux comptes créés dans Supabase.
-const ADMIN_EMAIL = 'jildasinno@gmail.com';
-const VENDEUR_EMAIL = 'jildasinno+vendeur@gmail.com';
+// ⚠️ Ces emails doivent correspondre EXACTEMENT aux comptes créés dans Supabase
+// et à la liste dans supabase-vendeurs.sql.
+export const ADMIN_EMAIL = 'jildasinno@gmail.com';
 
-// Retrouve le rôle à partir de l'email connecté.
-function roleForEmail(email: string | null | undefined): Role | null {
+export const SELLERS: Account[] = [
+  { email: 'jildasinno+gildas@gmail.com', role: 'vendeur', name: 'Gildas' },
+  { email: 'jildasinno+harold@gmail.com', role: 'vendeur', name: 'Harold' },
+];
+
+const ACCOUNTS: Account[] = [{ email: ADMIN_EMAIL, role: 'admin', name: 'Admin' }, ...SELLERS];
+
+function accountForEmail(email: string | null | undefined): Account | null {
   const e = (email || '').toLowerCase();
-  if (e === ADMIN_EMAIL.toLowerCase()) return 'admin';
-  if (e === VENDEUR_EMAIL.toLowerCase()) return 'vendeur';
-  return null;
+  return ACCOUNTS.find((a) => a.email.toLowerCase() === e) || null;
+}
+
+// Nom à afficher pour une vente / dépense d'après l'email enregistré dessus.
+// Les ventes faites avant les comptes personnels n'ont pas d'email.
+export function sellerLabel(email: string | null | undefined): string {
+  if (!email) return 'Avant (compte commun)';
+  return accountForEmail(email)?.name || email;
 }
 
 // Connexion : on saisit seulement le mot de passe.
-// On essaie d'abord le compte admin, puis le compte vendeur.
+// On l'essaie sur chaque compte (admin puis vendeurs).
 export async function login(password: string): Promise<Role | null> {
   const pass = password.trim();
-  for (const email of [ADMIN_EMAIL, VENDEUR_EMAIL]) {
+  for (const { email } of ACCOUNTS) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if (!error && data.user) return roleForEmail(data.user.email);
+    if (!error && data.user) return accountForEmail(data.user.email)?.role || null;
   }
   return null;
 }
 
+// Compte courant d'après la session active.
+export async function getAccount(): Promise<Account | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session ? accountForEmail(data.session.user.email) : null;
+}
+
 // Rôle courant d'après la session active.
 export async function getRole(): Promise<Role | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session ? roleForEmail(data.session.user.email) : null;
+  return (await getAccount())?.role || null;
 }
 
 export async function logout(): Promise<void> {
@@ -66,8 +85,8 @@ async function passwordWorks(email: string, password: string): Promise<boolean> 
 export async function changePassword(current: string, next: string): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   const email = data.session?.user.email;
-  const role = roleForEmail(email);
-  if (!email || !role) return 'Session expirée : reconnecte-toi.';
+  const me = accountForEmail(email);
+  if (!email || !me) return 'Session expirée : reconnecte-toi.';
 
   const newPass = next.trim();
   if (newPass.length < 6) return 'Le nouveau mot de passe doit faire au moins 6 caractères.';
@@ -77,11 +96,13 @@ export async function changePassword(current: string, next: string): Promise<str
     return 'Mot de passe actuel incorrect.';
   }
 
-  // La connexion se fait avec le mot de passe seul : les deux comptes
+  // La connexion se fait avec le mot de passe seul : tous les comptes
   // doivent donc avoir des mots de passe DIFFÉRENTS.
-  const otherEmail = role === 'admin' ? VENDEUR_EMAIL : ADMIN_EMAIL;
-  if (await passwordWorks(otherEmail, newPass)) {
-    return "Ce mot de passe est déjà utilisé par l'autre compte. Choisis-en un autre.";
+  for (const other of ACCOUNTS) {
+    if (other.email === me.email) continue;
+    if (await passwordWorks(other.email, newPass)) {
+      return 'Ce mot de passe est déjà utilisé par un autre compte. Choisis-en un autre.';
+    }
   }
 
   const { error } = await supabase.auth.updateUser({ password: newPass });

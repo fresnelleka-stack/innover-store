@@ -3,12 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getRole, type Role } from '@/lib/auth';
+import { getAccount, sellerLabel, SELLERS, type Account, type Role } from '@/lib/auth';
 import Header from '../components/Header';
 
 export default function ProduitVenduPage() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
+  // Filtre admin : '' = tous, sinon l'email du vendeur ('none' = ventes d'avant les comptes personnels)
+  const [sellerFilter, setSellerFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sales, setSales] = useState<any[]>([]);
@@ -17,12 +20,13 @@ export default function ProduitVenduPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    getRole().then((r) => {
-      if (!r) {
+    getAccount().then((a) => {
+      if (!a) {
         router.replace('/');
         return;
       }
-      setRole(r);
+      setAccount(a);
+      setRole(a.role);
     });
   }, [router]);
 
@@ -34,11 +38,14 @@ export default function ProduitVenduPage() {
     try {
       setLoading(true);
       setError('');
-      const { data, error } = await supabase
+      // Un vendeur ne voit que SES ventes ; l'admin voit tout.
+      let query = supabase
         .from('sales')
         .select('*, products(name)')
         .order('sold_at', { ascending: false })
         .limit(500);
+      if (account && account.role !== 'admin') query = query.eq('seller_email', account.email);
+      const { data, error } = await query;
       if (error) throw error;
       setSales(data || []);
     } catch (err: any) {
@@ -143,6 +150,7 @@ export default function ProduitVenduPage() {
   };
 
   const filtered = sales.filter((s) => {
+    if (sellerFilter === 'none' ? s.seller_email : sellerFilter && s.seller_email !== sellerFilter) return false;
     const name = (s.products?.name || '').toLowerCase();
     const imei = s.imei ? String(s.imei) : '';
     const q = searchTerm.toLowerCase();
@@ -154,9 +162,10 @@ export default function ProduitVenduPage() {
 
   // Export Excel (CSV, séparateur ; + BOM pour les accents — s'ouvre dans Excel).
   const exportCSV = () => {
-    const header = ['Date', 'Produit', 'IMEI', 'Quantite', 'Prix unitaire (XAF)', 'Total (XAF)', 'Profit (XAF)'];
+    const header = ['Date', 'Vendeur', 'Produit', 'IMEI', 'Quantite', 'Prix unitaire (XAF)', 'Total (XAF)', 'Profit (XAF)'];
     const lines = filtered.map((s) => [
       new Date(s.sold_at).toLocaleString('fr-CM'),
+      sellerLabel(s.seller_email),
       s.products?.name || 'Produit supprimé',
       s.imei ? String(s.imei) : '',
       String(s.quantity || 1),
@@ -194,12 +203,38 @@ export default function ProduitVenduPage() {
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Produits vendus</h1>
-          <p className="text-gray-600">Historique des ventes</p>
+          <p className="text-gray-600">
+            {role === 'admin'
+              ? 'Historique des ventes de toutes les boutiques'
+              : 'Tes ventes à toi, ' + (account?.name || '') + ' (les 500 dernières)'}
+          </p>
         </div>
 
         {error && (
           <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded">
             <p className="text-red-800">{error}</p>
+          </div>
+        )}
+
+        {/* Filtre par vendeur (admin) */}
+        {role === 'admin' && (
+          <div className="mb-4 flex gap-2 flex-wrap">
+            {[
+              { value: '', label: 'Tous' },
+              ...SELLERS.map((s) => ({ value: s.email, label: '🧑‍💼 ' + s.name })),
+              { value: 'none', label: 'Avant (compte commun)' },
+            ].map((o) => (
+              <button
+                key={o.value}
+                onClick={() => setSellerFilter(o.value)}
+                className={
+                  'px-4 py-2 rounded font-semibold transition ' +
+                  (sellerFilter === o.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100')
+                }
+              >
+                {o.label}
+              </button>
+            ))}
           </div>
         )}
 
@@ -254,7 +289,14 @@ export default function ProduitVenduPage() {
                       {sale.quantity > 1 ? ' x' + sale.quantity : ''}
                     </p>
                     {sale.imei && <p className="text-xs text-gray-600 truncate">IMEI: {sale.imei}</p>}
-                    <p className="text-xs text-gray-500">{timeOf(sale.sold_at)}</p>
+                    <p className="text-xs text-gray-500">
+                      {timeOf(sale.sold_at)}
+                      {role === 'admin' && (
+                        <span className="ml-2 px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold">
+                          {sellerLabel(sale.seller_email)}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div className="text-right shrink-0 ml-3">
                     <p className="font-semibold text-blue-600">{fmt(sale.total_price_xaf)} XAF</p>

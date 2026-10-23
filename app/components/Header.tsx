@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { logout, changePassword, type Role } from '@/lib/auth';
+import { logout, changePassword, getAccount, type Role } from '@/lib/auth';
 
 const NAV = [
   { href: '/seller', label: '🛒 Produit vendu' },
@@ -16,6 +16,12 @@ export default function Header({ role }: { role: Role }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // Nom du compte connecté (Gildas, Harold…) pour que chacun voie sur quel compte il vend.
+  const [name, setName] = useState('');
+  useEffect(() => {
+    getAccount().then((a) => setName(a ? a.name : ''));
+  }, []);
+  const badge = role === 'admin' ? '👑 Admin' : '🧑‍💼 ' + (name || 'Vendeur');
   const [pwOpen, setPwOpen] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -80,7 +86,7 @@ export default function Header({ role }: { role: Role }) {
             </Link>
           ))}
           <span className="ml-2 px-2 py-1 rounded bg-blue-800 text-blue-100 text-xs font-semibold">
-            {role === 'admin' ? '👑 Admin' : '🧑‍💼 Vendeur'}
+            {badge}
           </span>
           <button
             onClick={openPw}
@@ -124,7 +130,7 @@ export default function Header({ role }: { role: Role }) {
           </button>
           <div className="flex items-center justify-between border-t border-blue-800 mt-1 pt-2">
             <span className="px-2 py-1 rounded bg-blue-800 text-blue-100 text-xs font-semibold">
-              {role === 'admin' ? '👑 Admin' : '🧑‍💼 Vendeur'}
+              {badge}
             </span>
             <button
               onClick={doLogout}
@@ -142,7 +148,7 @@ export default function Header({ role }: { role: Role }) {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6 text-gray-900">
             <h2 className="text-xl font-bold mb-1">🔑 Changer le mot de passe</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Compte {role === 'admin' ? '👑 Admin' : '🧑‍💼 Vendeur'}
+              Compte {badge}
             </p>
 
             {pwDone ? (

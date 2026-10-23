@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Product } from '@/lib/supabase';
-import { getRole, type Role } from '@/lib/auth';
+import { getAccount, type Account, type Role } from '@/lib/auth';
 import Header from '../components/Header';
 
 type ProductForm = {
@@ -71,6 +71,8 @@ async function withRetry<T>(fn: () => PromiseLike<T>, tries = 3, delayMs = 800):
 export default function AdminPanel() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
+  // Compte connecté : chaque vente est enregistrée à son nom.
+  const [account, setAccount] = useState<Account | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,7 +90,7 @@ export default function AdminPanel() {
   const [accQty, setAccQty] = useState<Record<string, string>>({});
   const [accPrice, setAccPrice] = useState<Record<string, string>>({});
   const [lastSale, setLastSale] = useState<
-    | { name: string; imei: string | null; qty: number; unitPrice: number; total: number; date: string }
+    | { name: string; imei: string | null; qty: number; unitPrice: number; total: number; date: string; seller: string }
     | null
   >(null);
   const [imeiWarning, setImeiWarning] = useState('');
@@ -168,13 +170,14 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
-    getRole().then((r) => {
-      if (!r) {
+    getAccount().then((a) => {
+      if (!a) {
         router.replace('/');
         return;
       }
       // Admin ET vendeur ont accès à la gestion des produits (le vendeur ne peut juste pas supprimer).
-      setRole(r);
+      setAccount(a);
+      setRole(a.role);
     });
   }, [router]);
 
@@ -377,7 +380,8 @@ export default function AdminPanel() {
         total_price_xaf: price * qty,
         profit_xaf: (price - p.cost_xaf) * qty,
         seller_id: null,
-        seller_name: 'Vendeur',
+        seller_name: account?.name || null,
+        seller_email: account?.email || null,
       }]);
       if (saleError) throw saleError;
 
@@ -400,6 +404,7 @@ export default function AdminPanel() {
         unitPrice: price,
         total: price * qty,
         date: new Date().toLocaleString('fr-CM'),
+        seller: account?.name || '',
       });
       setAccQty((prev) => ({ ...prev, [p.id]: '1' }));
       setAccPrice((prev) => {
@@ -422,6 +427,7 @@ export default function AdminPanel() {
     unitPrice: number;
     total: number;
     date: string;
+    seller: string;
   }) => {
     const w = window.open('', '_blank', 'width=360,height=640');
     if (!w) {
@@ -439,7 +445,9 @@ export default function AdminPanel() {
       '.foot{text-align:center;color:#666;font-size:12px;margin-top:14px}' +
       '</style></head><body>' +
       '<h1>INNOVER STORE</h1><div class="sub">Reçu de vente</div>' +
-      '<div class="sub">' + info.date + '</div><hr/>' +
+      '<div class="sub">' + info.date + '</div>' +
+      (info.seller ? '<div class="sub">Vendeur : ' + info.seller + '</div>' : '') +
+      '<hr/>' +
       '<div class="row"><span>Produit</span><span>' + info.name + '</span></div>' +
       (info.imei ? '<div class="row"><span>IMEI</span><span>' + info.imei + '</span></div>' : '') +
       '<div class="row"><span>Quantité</span><span>' + info.qty + '</span></div>' +
@@ -471,7 +479,8 @@ export default function AdminPanel() {
           total_price_xaf: price,
           profit_xaf: price - p.cost_xaf,
           seller_id: null,
-          seller_name: 'Vendeur',
+          seller_name: account?.name || null,
+          seller_email: account?.email || null,
         },
       ]);
       if (saleError) throw saleError;
@@ -503,6 +512,7 @@ export default function AdminPanel() {
         unitPrice: price,
         total: price,
         date: new Date().toLocaleString('fr-CM'),
+        seller: account?.name || '',
       });
     } catch (err: any) {
       setError(err.message);
@@ -669,6 +679,7 @@ export default function AdminPanel() {
               {lastSale.imei ? ' (IMEI ' + lastSale.imei + ')' : ''} — {lastSale.qty} ×{' '}
               {lastSale.unitPrice.toLocaleString('fr-CM')} ={' '}
               {lastSale.total.toLocaleString('fr-CM')} XAF
+              {lastSale.seller ? ' — par ' + lastSale.seller : ''}
             </p>
             <button
               onClick={() => printReceipt(lastSale)}

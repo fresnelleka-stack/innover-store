@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { getRole, type Role } from '@/lib/auth';
+import { getAccount, sellerLabel, SELLERS, ADMIN_EMAIL, type Account, type Role } from '@/lib/auth';
 import Header from '../components/Header';
 
 // Panne réseau (téléphone : « Load failed » / « Failed to fetch »).
@@ -35,6 +35,7 @@ async function withRetry<T>(fn: () => PromiseLike<T>, tries = 3, delayMs = 800):
 export default function Dashboard() {
   const router = useRouter();
   const [role, setRole] = useState<Role | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
   const [dateRange, setDateRange] = useState('today');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,14 +51,26 @@ export default function Dashboard() {
   const [expDate, setExpDate] = useState('');
   const [expSaving, setExpSaving] = useState(false);
   const [expError, setExpError] = useState('');
+  // Admin : dépense payée par quel vendeur ('' = l'admin lui-même)
+  const [expSeller, setExpSeller] = useState('');
+  // Comptes par vendeur : ventes / dépenses depuis le début + versements (argent remis au patron)
+  const [allSales, setAllSales] = useState<any[]>([]);
+  const [allExpenses, setAllExpenses] = useState<any[]>([]);
+  const [payouts, setPayouts] = useState<any[]>([]);
+  const [payEmail, setPayEmail] = useState(SELLERS[0].email);
+  const [payAmount, setPayAmount] = useState('');
+  const [payNote, setPayNote] = useState('');
+  const [paySaving, setPaySaving] = useState(false);
+  const [payError, setPayError] = useState('');
 
   useEffect(() => {
-    getRole().then((r) => {
-      if (!r) {
+    getAccount().then((a) => {
+      if (!a) {
         router.replace('/');
         return;
       }
-      setRole(r);
+      setAccount(a);
+      setRole(a.role);
     });
   }, [router]);
 
@@ -85,10 +98,20 @@ export default function Dashboard() {
         .select('*, products(name)')
         .order('sold_at', { ascending: false });
       if (cutoff) query = query.gte('sold_at', cutoff);
+      // Un vendeur ne voit que SES chiffres ; l'admin voit les 2 boutiques.
+      const mine = account && account.role !== 'admin' ? account.email : null;
+      if (mine) query = query.eq('seller_email', mine);
 
       const { data: salesData, error: salesErr } = await query;
       if (salesErr) throw salesErr;
       setSales(salesData || []);
+
+      // Toutes les ventes depuis le début (colonnes légères) : sert au « reste à remettre ».
+      let allQuery = supabase.from('sales').select('seller_email, total_price_xaf').not('seller_email', 'is', null);
+      if (mine) allQuery = allQuery.eq('seller_email', mine);
+      const { data: allSalesData, error: allSalesErr } = await allQuery;
+      if (allSalesErr) throw allSalesErr;
+      setAllSales(allSalesData || []);
 
       const { data: prodData, error: prodErr } = await supabase
         .from('products')
@@ -116,6 +139,27 @@ export default function Dashboard() {
         setExpenses(expData || []);
       } catch {
         setExpenses([]);
+      }
+
+      // Dépenses depuis le début + versements. Non-bloquant (si le script SQL
+      // supabase-vendeurs.sql n'a pas encore été lancé, on affiche juste 0).
+      try {
+        const { data: allExpData, error: allExpErr } = await withRetry(() =>
+          supabase.from('expenses').select('id, seller_email, amount_xaf').not('seller_email', 'is', null)
+        );
+        if (allExpErr) throw allExpErr;
+        setAllExpenses(allExpData || []);
+      } catch {
+        setAllExpenses([]);
+      }
+      try {
+        const { data: payData, error: payErr } = await withRetry(() =>
+          supabase.from('payouts').select('*').order('paid_at', { ascending: false })
+        );
+        if (payErr) throw payErr;
+        setPayouts(payData || []);
+      } catch {
+        setPayouts([]);
       }
     } catch (err: any) {
       setError(
@@ -152,13 +196,21 @@ export default function Dashboard() {
     setExpError('');
     setExpSaving(true);
     try {
-      const payload: Record<string, any> = { label: expLabel.trim(), amount_xaf: amount };
+      const payload: Record<string, any> = {
+        label: expLabel.trim(),
+        amount_xaf: amount,
+        // Le serveur met de toute façon le compte connecté ; seul l'admin peut choisir un vendeur.
+        seller_email: (role === 'admin' && expSeller) || account?.email || null,
+      };
       if (expDate) payload.spent_at = new Date(expDate + 'T12:00:00').toISOString();
       const { data, error } = await withRetry(() =>
         supabase.from('expenses').insert([payload]).select()
       );
       if (error) throw error;
-      if (data) setExpenses((prev) => [data[0], ...prev]);
+      if (data) {
+        setExpenses((prev) => [data[0], ...prev]);
+        setAllExpenses((prev) => [data[0], ...prev]);
+      }
       setExpLabel('');
       setExpAmount('');
       setExpDate('');
@@ -179,10 +231,95 @@ export default function Dashboard() {
       const { error } = await withRetry(() => supabase.from('expenses').delete().eq('id', id));
       if (error) throw error;
       setExpenses((prev) => prev.filter((x) => x.id !== id));
+      setAllExpenses((prev) => prev.filter((x) => x.id !== id));
     } catch (err: any) {
       setExpError(isNetworkError(err) ? '⚠️ Connexion instable — réessaie.' : err.message || 'Erreur');
     }
   };
+
+  // Versement : argent qu'un vendeur remet au patron (admin seulement).
+  const addPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPayError('Entre un montant valide (supérieur à 0).');
+      return;
+    }
+    setPayError('');
+    setPaySaving(true);
+    try {
+      const { data, error } = await withRetry(() =>
+        supabase
+          .from('payouts')
+          .insert([{ seller_email: payEmail, amount_xaf: amount, note: payNote.trim() || null }])
+          .select()
+      );
+      if (error) throw error;
+      if (data) setPayouts((prev) => [data[0], ...prev]);
+      setPayAmount('');
+      setPayNote('');
+    } catch (err: any) {
+      setPayError(
+        isNetworkError(err)
+          ? '⚠️ Connexion instable — le versement n\'a pas été enregistré. Réessaie.'
+          : err.message || 'Erreur'
+      );
+    } finally {
+      setPaySaving(false);
+    }
+  };
+
+  const deletePayout = async (id: string) => {
+    if (!confirm('Supprimer ce versement ?')) return;
+    try {
+      const { error } = await withRetry(() => supabase.from('payouts').delete().eq('id', id));
+      if (error) throw error;
+      setPayouts((prev) => prev.filter((x) => x.id !== id));
+    } catch (err: any) {
+      setPayError(isNetworkError(err) ? '⚠️ Connexion instable — réessaie.' : err.message || 'Erreur');
+    }
+  };
+
+  // Comptes par vendeur. « Doit avoir en main » = encaissé − dépenses (période choisie).
+  // « Reste à remettre » = depuis le début : encaissé − dépenses − déjà remis au patron.
+  const sumBy = (rows: any[], email: string | null, field: string) =>
+    rows
+      .filter((r) => (email ? r.seller_email === email : !r.seller_email))
+      .reduce((s, r) => s + Number(r[field] || 0), 0);
+  const sellerStats = (email: string | null, name: string) => {
+    const periodSales = sales.filter((s) => (email ? s.seller_email === email : !s.seller_email));
+    const revenue = sumBy(sales, email, 'total_price_xaf');
+    const spent = sumBy(expenses, email, 'amount_xaf');
+    const allRevenue = email ? sumBy(allSales, email, 'total_price_xaf') : 0;
+    const allSpent = email ? sumBy(allExpenses, email, 'amount_xaf') : 0;
+    const paid = email ? sumBy(payouts, email, 'amount_xaf') : 0;
+    return {
+      email,
+      name,
+      count: periodSales.length,
+      items: periodSales.reduce((s, x) => s + Number(x.quantity || 0), 0),
+      revenue,
+      profit: sumBy(sales, email, 'profit_xaf'),
+      spent,
+      inHand: revenue - spent,
+      allRevenue,
+      allSpent,
+      paid,
+      due: allRevenue - allSpent - paid,
+    };
+  };
+  // Admin : un bloc par vendeur (+ l'admin et les anciennes ventes s'il y en a sur la période).
+  // Vendeur : seulement son propre bloc.
+  const sellerRows =
+    role === 'admin'
+      ? [
+          ...SELLERS.map((s) => sellerStats(s.email, s.name)),
+          sellerStats(ADMIN_EMAIL, 'Admin (toi)'),
+          sellerStats(null, 'Avant (compte commun)'),
+        ].filter((r, i) => i < SELLERS.length || r.count > 0 || r.spent > 0)
+      : account
+      ? [sellerStats(account.email, account.name)]
+      : [];
 
   // Alerte stock : produits épuisés (0) ou presque (<= 3), du plus critique au moins.
   const lowStock = productStocks
@@ -275,6 +412,151 @@ export default function Dashboard() {
           ))}
         </div>
 
+        {/* Comptes par vendeur : qui a vendu quoi, qui doit combien */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8 border-l-4 border-blue-600">
+          <h2 className="text-xl font-bold mb-1 text-gray-900">
+            {role === 'admin' ? '👥 Comptes par vendeur' : '🧑‍💼 Mon compte — ' + (account?.name || '')}
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Chaque vente est enregistrée automatiquement au nom de celui qui est connecté.{' '}
+            <span className="font-semibold">Reste à remettre</span> = tout ce qu&apos;il a encaissé
+            − ses dépenses − l&apos;argent déjà remis au patron (depuis le début).
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sellerRows.map((r) => (
+              <div key={r.email || 'none'} className="border-2 border-gray-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-lg font-bold text-gray-900">🧑‍💼 {r.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {r.count} vente{r.count > 1 ? 's' : ''} · {r.items} article{r.items > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <p className="text-xs font-semibold text-gray-400 uppercase mb-1">
+                  {dateRange === 'today' ? "Aujourd'hui" : dateRange === 'all' ? 'Depuis le début' : 'Sur la période'}
+                </p>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Encaissé</span>
+                    <span className="font-semibold text-blue-600">{fmt(r.revenue)} XAF</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Dépenses</span>
+                    <span className="font-semibold text-red-600">- {fmt(r.spent)} XAF</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1">
+                    <span className="text-gray-800 font-semibold">Doit avoir en main</span>
+                    <span className="font-bold text-gray-900">{fmt(r.inHand)} XAF</span>
+                  </div>
+                  {role === 'admin' && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Profit</span>
+                      <span className="font-semibold text-green-600">{fmt(r.profit)} XAF</span>
+                    </div>
+                  )}
+                </div>
+
+                {r.email && (
+                  <div className="mt-3 bg-gray-50 rounded p-3 text-sm space-y-1">
+                    <p className="text-xs font-semibold text-gray-400 uppercase">Depuis le début</p>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Encaissé − dépenses</span>
+                      <span className="font-semibold">{fmt(r.allRevenue - r.allSpent)} XAF</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Déjà remis au patron</span>
+                      <span className="font-semibold text-emerald-600">- {fmt(r.paid)} XAF</span>
+                    </div>
+                    <div
+                      className={
+                        'flex justify-between rounded px-2 py-1 font-bold ' +
+                        (r.due > 0 ? 'bg-orange-100 text-orange-800' : 'bg-emerald-100 text-emerald-800')
+                      }
+                    >
+                      <span>Reste à remettre</span>
+                      <span>{fmt(r.due)} XAF</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Versements : argent remis au patron */}
+          <div className="mt-6">
+            <h3 className="text-lg font-bold mb-2 text-gray-900">💵 Versements (argent remis au patron)</h3>
+            {role === 'admin' && (
+              <>
+                <form onSubmit={addPayout} className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
+                  <select
+                    value={payEmail}
+                    onChange={(e) => setPayEmail(e.target.value)}
+                    className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white focus:outline-none focus:border-emerald-500"
+                  >
+                    {SELLERS.map((s) => (
+                      <option key={s.email} value={s.email}>
+                        Reçu de {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="Montant reçu (XAF)"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Note (facultatif)"
+                    value={payNote}
+                    onChange={(e) => setPayNote(e.target.value)}
+                    className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={paySaving}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-bold py-2 rounded"
+                  >
+                    {paySaving ? 'Enregistrement...' : '✅ Enregistrer'}
+                  </button>
+                </form>
+                {payError && <p className="text-red-600 text-sm mb-3">{payError}</p>}
+              </>
+            )}
+            {payouts.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center py-3">Aucun versement enregistré.</p>
+            ) : (
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {payouts.map((p) => (
+                  <div key={p.id} className="flex justify-between items-center border-b last:border-b-0 py-2 gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {sellerLabel(p.seller_email)}
+                        {p.note ? ' — ' + p.note : ''}
+                      </p>
+                      <p className="text-xs text-gray-500">{timeOf(p.paid_at)}</p>
+                    </div>
+                    <p className="font-semibold text-emerald-600 whitespace-nowrap">
+                      {fmt(Number(p.amount_xaf || 0))} XAF
+                    </p>
+                    {role === 'admin' && (
+                      <button
+                        onClick={() => deletePayout(p.id)}
+                        className="text-gray-400 hover:text-red-600 font-bold px-2"
+                        title="Supprimer ce versement"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Dépenses / sorties d'argent */}
         <div className="bg-white rounded-lg shadow p-6 mb-8 border-l-4 border-red-500">
           <h2 className="text-xl font-bold mb-1 text-gray-900">💸 Dépenses / Sorties d&apos;argent</h2>
@@ -307,6 +589,21 @@ export default function Dashboard() {
               title="Date de la dépense (laisser vide = aujourd'hui)"
               className="border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white focus:outline-none focus:border-red-500"
             />
+            {role === 'admin' && (
+              <select
+                value={expSeller}
+                onChange={(e) => setExpSeller(e.target.value)}
+                title="Qui a payé cette dépense (elle sera déduite de son argent en main)"
+                className="sm:col-span-4 border-2 border-gray-300 rounded px-3 py-2 text-gray-900 bg-white focus:outline-none focus:border-red-500"
+              >
+                <option value="">Payée par : moi (admin)</option>
+                {SELLERS.map((s) => (
+                  <option key={s.email} value={s.email}>
+                    Payée par : {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="submit"
               disabled={expSaving}
@@ -334,18 +631,22 @@ export default function Dashboard() {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{x.label}</p>
-                    <p className="text-xs text-gray-500">{timeOf(x.spent_at)}</p>
+                    <p className="text-xs text-gray-500">
+                      {timeOf(x.spent_at)} · {sellerLabel(x.seller_email)}
+                    </p>
                   </div>
                   <p className="font-semibold text-red-600 whitespace-nowrap">
                     - {fmt(Number(x.amount_xaf || 0))} XAF
                   </p>
-                  <button
-                    onClick={() => deleteExpense(x.id)}
-                    className="text-gray-400 hover:text-red-600 font-bold px-2"
-                    title="Supprimer cette dépense"
-                  >
-                    ✕
-                  </button>
+                  {role === 'admin' && (
+                    <button
+                      onClick={() => deleteExpense(x.id)}
+                      className="text-gray-400 hover:text-red-600 font-bold px-2"
+                      title="Supprimer cette dépense"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -426,7 +727,10 @@ export default function Dashboard() {
                           {sale.quantity > 1 ? ' x' + sale.quantity : ''}
                         </p>
                         {sale.imei && <p className="text-xs text-gray-600">IMEI: {sale.imei}</p>}
-                        <p className="text-xs text-gray-500">{timeOf(sale.sold_at)}</p>
+                        <p className="text-xs text-gray-500">
+                          {timeOf(sale.sold_at)}
+                          {role === 'admin' && ' · ' + sellerLabel(sale.seller_email)}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-blue-600">{fmt(Number(sale.total_price_xaf))} XAF</p>
