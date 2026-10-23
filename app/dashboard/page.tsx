@@ -62,6 +62,8 @@ export default function Dashboard() {
   const [payNote, setPayNote] = useState('');
   const [paySaving, setPaySaving] = useState(false);
   const [payError, setPayError] = useState('');
+  // Vendeur : ventes des AUTRES vendeurs (montants seulement) sur la période
+  const [teamSales, setTeamSales] = useState<any[]>([]);
 
   useEffect(() => {
     getAccount().then((a) => {
@@ -112,6 +114,22 @@ export default function Dashboard() {
       const { data: allSalesData, error: allSalesErr } = await allQuery;
       if (allSalesErr) throw allSalesErr;
       setAllSales(allSalesData || []);
+
+      // Vendeur : seulement le MONTANT vendu par les autres boutiques sur la période
+      // (pas le détail des ventes, ni le profit, ni les dépenses).
+      if (mine) {
+        let teamQuery = supabase
+          .from('sales')
+          .select('seller_email, total_price_xaf, quantity')
+          .not('seller_email', 'is', null)
+          .neq('seller_email', mine);
+        if (cutoff) teamQuery = teamQuery.gte('sold_at', cutoff);
+        const { data: teamData, error: teamErr } = await teamQuery;
+        if (teamErr) throw teamErr;
+        setTeamSales(teamData || []);
+      } else {
+        setTeamSales([]);
+      }
 
       const { data: prodData, error: prodErr } = await supabase
         .from('products')
@@ -481,6 +499,30 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
+          {/* Vendeur : montant vendu par l'autre boutique (total seulement) */}
+          {role !== 'admin' &&
+            SELLERS.filter((s) => s.email !== account?.email).map((s) => {
+              const rows = teamSales.filter((x) => x.seller_email === s.email);
+              const total = rows.reduce((sum, x) => sum + Number(x.total_price_xaf || 0), 0);
+              const items = rows.reduce((sum, x) => sum + Number(x.quantity || 0), 0);
+              return (
+                <div
+                  key={s.email}
+                  className="mt-4 border-2 border-dashed border-gray-200 rounded-lg p-4 flex justify-between items-center gap-3"
+                >
+                  <div>
+                    <p className="font-bold text-gray-900">🧑‍💼 {s.name} a vendu</p>
+                    <p className="text-xs text-gray-500">
+                      {dateRange === 'today' ? "Aujourd'hui" : dateRange === 'all' ? 'Depuis le début' : 'Sur la période'}
+                      {' · '}
+                      {items} article{items > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <p className="text-xl font-bold text-blue-600 whitespace-nowrap">{fmt(total)} XAF</p>
+                </div>
+              );
+            })}
 
           {/* Versements : argent remis au patron */}
           <div className="mt-6">
