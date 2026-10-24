@@ -104,38 +104,74 @@ export default function Dashboard() {
       const mine = account && account.role !== 'admin' ? account.email : null;
       if (mine) query = query.eq('seller_email', mine);
 
-      const { data: salesData, error: salesErr } = await query;
-      if (salesErr) throw salesErr;
-      setSales(salesData || []);
-
       // Toutes les ventes depuis le début (colonnes légères) : sert au « reste à remettre ».
       let allQuery = supabase.from('sales').select('seller_email, total_price_xaf').not('seller_email', 'is', null);
       if (mine) allQuery = allQuery.eq('seller_email', mine);
-      const { data: allSalesData, error: allSalesErr } = await allQuery;
-      if (allSalesErr) throw allSalesErr;
-      setAllSales(allSalesData || []);
 
       // Vendeur : seulement le MONTANT vendu par les autres boutiques sur la période
       // (pas le détail des ventes, ni le profit, ni les dépenses).
+      let teamQuery = null;
       if (mine) {
-        let teamQuery = supabase
+        teamQuery = supabase
           .from('sales')
           .select('seller_email, total_price_xaf, quantity')
           .not('seller_email', 'is', null)
           .neq('seller_email', mine);
         if (cutoff) teamQuery = teamQuery.gte('sold_at', cutoff);
-        const { data: teamData, error: teamErr } = await teamQuery;
-        if (teamErr) throw teamErr;
-        setTeamSales(teamData || []);
-      } else {
-        setTeamSales([]);
       }
 
-      const { data: prodData, error: prodErr } = await supabase
+      const prodQuery = supabase
         .from('products')
         .select('id, name, imei, category, cost_xaf, quantity_available, quantity_sold')
         .order('name', { ascending: true });
-      if (prodErr) throw prodErr;
+
+      // Dépenses / versements : non-bloquants (si la table n'existe pas encore, on affiche 0).
+      const optional = (p: PromiseLike<{ data: any; error: any }>) =>
+        Promise.resolve(p).then(
+          (r) => (r.error ? [] : r.data || []),
+          () => []
+        );
+      const expPromise = optional(
+        withRetry(() => {
+          let q = supabase.from('expenses').select('*').order('spent_at', { ascending: false });
+          if (cutoff) q = q.gte('spent_at', cutoff);
+          return q;
+        })
+      );
+      const allExpPromise = optional(
+        withRetry(() =>
+          supabase.from('expenses').select('id, seller_email, amount_xaf').not('seller_email', 'is', null)
+        )
+      );
+      const payPromise = optional(
+        withRetry(() => supabase.from('payouts').select('*').order('paid_at', { ascending: false }))
+      );
+
+      // Toutes les demandes partent EN MÊME TEMPS (au lieu d'attendre l'une après l'autre) :
+      // le tableau de bord s'affiche en une seule attente réseau.
+      const [salesRes, allSalesRes, teamRes, prodRes, expData, allExpData, payData] = await Promise.all([
+        query,
+        allQuery,
+        teamQuery ?? Promise.resolve({ data: [], error: null }),
+        prodQuery,
+        expPromise,
+        allExpPromise,
+        payPromise,
+      ]);
+
+      if (salesRes.error) throw salesRes.error;
+      if (allSalesRes.error) throw allSalesRes.error;
+      if (teamRes.error) throw teamRes.error;
+      if (prodRes.error) throw prodRes.error;
+
+      setSales(salesRes.data || []);
+      setAllSales(allSalesRes.data || []);
+      setTeamSales(teamRes.data || []);
+      setExpenses(expData);
+      setAllExpenses(allExpData);
+      setPayouts(payData);
+
+      const prodData = prodRes.data;
       setProductStocks(prodData || []);
       setStockRemaining((prodData || []).reduce((s: number, p: any) => s + (p.quantity_available || 0), 0));
       setStockValue(
@@ -144,41 +180,6 @@ export default function Dashboard() {
           0
         )
       );
-
-      // Dépenses / sorties d'argent (même période que les ventes).
-      // Non-bloquant : si la table n'existe pas encore, on affiche juste 0 dépense.
-      try {
-        const { data: expData, error: expErr } = await withRetry(() => {
-          let q = supabase.from('expenses').select('*').order('spent_at', { ascending: false });
-          if (cutoff) q = q.gte('spent_at', cutoff);
-          return q;
-        });
-        if (expErr) throw expErr;
-        setExpenses(expData || []);
-      } catch {
-        setExpenses([]);
-      }
-
-      // Dépenses depuis le début + versements. Non-bloquant (si le script SQL
-      // supabase-vendeurs.sql n'a pas encore été lancé, on affiche juste 0).
-      try {
-        const { data: allExpData, error: allExpErr } = await withRetry(() =>
-          supabase.from('expenses').select('id, seller_email, amount_xaf').not('seller_email', 'is', null)
-        );
-        if (allExpErr) throw allExpErr;
-        setAllExpenses(allExpData || []);
-      } catch {
-        setAllExpenses([]);
-      }
-      try {
-        const { data: payData, error: payErr } = await withRetry(() =>
-          supabase.from('payouts').select('*').order('paid_at', { ascending: false })
-        );
-        if (payErr) throw payErr;
-        setPayouts(payData || []);
-      } catch {
-        setPayouts([]);
-      }
     } catch (err: any) {
       setError(
         isNetworkError(err)

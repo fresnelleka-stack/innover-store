@@ -72,7 +72,7 @@ export default function Header({ role }: { role: Role }) {
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
         <Link href="/" className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.jpg" alt="INNOVER STORE" className="h-9 w-9 rounded-lg object-cover" />
+          <img src="/logo-small.jpg" alt="INNOVER STORE" className="h-9 w-9 rounded-lg object-cover" />
           <span className="text-lg font-bold">
             <span className="text-white">INNOVER</span> <span className="text-red-400">STORE</span>
           </span>

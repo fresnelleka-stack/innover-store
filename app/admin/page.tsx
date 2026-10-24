@@ -188,17 +188,17 @@ export default function AdminPanel() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await withRetry(() =>
-        supabase.from('products').select('*').order('created_at', { ascending: false })
-      );
+      // Les deux demandes partent en même temps (une seule attente réseau).
+      const [{ data, error }, { data: soldRows }] = await Promise.all([
+        withRetry(() =>
+          supabase.from('products').select('*').order('created_at', { ascending: false })
+        ),
+        // Ventes déjà enregistrées : produits vendus (non modifiables) + IMEI vendus (affichés en vert)
+        withRetry(() => supabase.from('sales').select('product_id, imei, total_price_xaf')),
+      ]);
 
       if (error) throw error;
       setProducts(data || []);
-
-      // Ventes déjà enregistrées : produits vendus (non modifiables) + IMEI vendus (affichés en vert)
-      const { data: soldRows } = await withRetry(() =>
-        supabase.from('sales').select('product_id, imei, total_price_xaf')
-      );
       const ids = Array.from(
         new Set((soldRows || []).map((r: any) => r.product_id).filter(Boolean))
       ) as string[];

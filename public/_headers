@@ -1,0 +1,13 @@
+# Cloudflare Pages : les fichiers du site ont un nom unique à chaque version,
+# le navigateur peut donc les garder longtemps sans les retélécharger.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/logo-small.jpg
+  Cache-Control: public, max-age=604800
+
+/logo.jpg
+  Cache-Control: public, max-age=604800
+
+/sw.js
+  Cache-Control: no-cache

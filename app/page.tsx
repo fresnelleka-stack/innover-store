@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { getRole, login } from '@/lib/auth';
 
+// Dernier catalogue gardé sur le téléphone (affichage instantané à l'ouverture).
+const CATALOG_CACHE_KEY = 'innover_catalog_v1';
+
 // Groupe WhatsApp de la boutique (bouton "Acheter").
 const WHATSAPP = 'https://chat.whatsapp.com/K2UIxb5Cg0QJQuG6QoEx4y?s=hd&p=i&mlu=4&amv=1';
 
@@ -161,6 +164,17 @@ export default function Storefront() {
   };
 
   useEffect(() => {
+    // Affichage instantané : on montre d'abord le dernier catalogue gardé sur le
+    // téléphone, puis on le remplace par la version à jour dès qu'elle arrive.
+    try {
+      const cached = localStorage.getItem(CATALOG_CACHE_KEY);
+      if (cached) {
+        setItems(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {
+      /* ignore */
+    }
     getRole().then((r) => setIsStaff(!!r));
     load();
 
@@ -197,11 +211,17 @@ export default function Storefront() {
 
   const load = async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('catalog')
         .select('id, name, description, category, price_fcfa, image_url')
         .order('created_at', { ascending: false });
+      if (error) return; // réseau coupé : on garde ce qui est déjà affiché
       setItems(data || []);
+      try {
+        localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(data || []));
+      } catch {
+        /* ignore */
+      }
     } finally {
       setLoading(false);
     }
@@ -217,7 +237,7 @@ export default function Storefront() {
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.jpg" alt="INNOVER STORE" className="h-10 w-10 rounded-lg object-cover" />
+            <img src="/logo-small.jpg" alt="INNOVER STORE" className="h-10 w-10 rounded-lg object-cover" />
             <span className="text-xl font-bold">
               <span className="text-gray-900">INNOVER</span> <span className="text-red-600">STORE</span>
             </span>

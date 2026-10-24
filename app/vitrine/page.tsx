@@ -79,7 +79,8 @@ const uploadPhoto = async (file: File): Promise<string> => {
   const { error } = await withRetry(() =>
     supabase.storage
       .from('photos')
-      .upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+      // Nom de fichier unique → le téléphone peut garder la photo 1 an sans la retélécharger.
+      .upload(path, blob, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
       .then((res) => {
         if (res.error) throw res.error;
         return res;
